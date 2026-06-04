@@ -602,6 +602,28 @@
 
       let lastDataSignature = null;
 
+      function toggleEntity(entityId, element) {
+        if (element) {
+          element.classList.add('active-tap');
+          setTimeout(() => { element.classList.remove('active-tap'); }, 500);
+        }
+
+        if (!hassSocket || hassSocket.readyState !== WebSocket.OPEN) {
+          console.warn("HA Socket not connected. Cannot toggle", entityId);
+          return;
+        }
+
+        const domain = entityId.split('.')[0];
+        
+        hassSocket.send(JSON.stringify({
+          id: hassMessageId++,
+          type: 'call_service',
+          domain: domain,
+          service: 'toggle',
+          target: { entity_id: entityId }
+        }));
+      }
+
       function renderData() {
         const sourceData = Object.assign({}, window.KINDLE_DASHBOARD_DATA || {});
         if (window.KINDLE_HASS_DATA) {
@@ -625,13 +647,12 @@
 
         setText('mailCount', mail.unread || (mail.items ? mail.items.length : 0) || 0);
         setText('mailSubhead', mail.summary || defaults.mail.summary);
-        document.getElementById('mailItems').innerHTML = (mail.items || []).slice(0, 4).map(m =>
+        document.getElementById('mailItems').innerHTML = (mail.items || []).slice(0, 2).map(m =>
           item(m.from || 'Mail', m.subject || m.detail || '', m.when || '')
         ).join('') || empty('Inbox quiet');
 
         setText('eventCount', events.length);
-        setText('agendaSubhead', data.agendaSummary || 'Today and upcoming');
-        document.getElementById('eventItems').innerHTML = events.slice(0, 4).map(e =>
+        document.getElementById('eventItems').innerHTML = events.slice(0, 2).map(e =>
           item(e.title || 'Event', e.detail || e.where || '', e.time || '')
         ).join('') || empty('No events today');
 
