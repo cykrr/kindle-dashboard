@@ -321,6 +321,35 @@
         .clock-panel { grid-template-columns: 1fr 264px; padding: 16px; }
         .calendar-mini { padding-left: 14px; }
       }
+      .column-stack {
+        display: grid;
+        grid-template-rows: 1fr 1fr;
+        gap: 12px;
+        min-height: 0;
+      }
+
+      .action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        font-family: inherit;
+        font-size: 15px;
+        font-weight: 850;
+        color: var(--ink);
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 14px 12px;
+        cursor: pointer;
+        outline: none;
+      }
+
+      .action-btn.active-tap {
+        background: var(--dark) !important;
+        color: white !important;
+        border-color: var(--dark) !important;
+      }
     </style>
   </head>
   <body>
@@ -349,24 +378,37 @@
 
       <section class="bottom">
         <article class="panel card">
-          <div class="card-head" style="border-bottom: none;">
-            <h2>Mail</h2>
+          <div class="card-head">
+            <h2>Devices</h2>
           </div>
-          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
-            <div id="mailCount" style="font-size: 72px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 8px; color: var(--dark);">0</div>
-            <div class="subhead" id="mailSubhead" style="margin: 0; text-align: center;">No data yet</div>
+          <div class="subhead">Tap to toggle</div>
+          <div class="items">
+            <button class="action-btn" onclick="toggleEntity('light.obl4ca5ea8b_1', this)">
+              Main Light <span>⏻</span>
+            </button>
+            <button class="action-btn" onclick="toggleEntity('light.lampara', this)">
+              Lamp <span>⏻</span>
+            </button>
           </div>
-          <div id="mailItems" style="display: none;"></div>
         </article>
 
-        <article class="panel card">
-          <div class="card-head">
-            <h2>Agenda</h2>
-            <span class="badge" id="eventCount">0</span>
-          </div>
-          <div class="subhead" id="agendaSubhead">Today and upcoming</div>
-          <div class="items" id="eventItems"></div>
-        </article>
+        <div class="column-stack">
+          <article class="panel card">
+            <div class="card-head">
+              <h2>Mail</h2>
+              <span class="badge" id="mailCount" style="background: transparent; color: var(--dark); border: 2px solid var(--dark); padding: 0 6px;">0</span>
+            </div>
+            <div class="items" id="mailItems" style="margin-top: 4px;"></div>
+          </article>
+
+          <article class="panel card">
+            <div class="card-head">
+              <h2>Agenda</h2>
+              <span class="badge" id="eventCount">0</span>
+            </div>
+            <div class="items" id="eventItems" style="margin-top: 4px;"></div>
+          </article>
+        </div>
 
         <article class="panel card">
           <div class="card-head">
