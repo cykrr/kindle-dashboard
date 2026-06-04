@@ -235,6 +235,12 @@
         font-weight: 950;
         font-variant-numeric: tabular-nums;
       }
+      button.badge {
+        cursor: pointer;
+        border: none;
+        appearance: none;
+        font-family: inherit;
+      }
 
       .subhead {
         min-height: 16px;
@@ -415,7 +421,7 @@
         <article class="panel card">
           <div class="card-head">
             <h2>Music</h2>
-            <span class="badge" id="musicBadge">--</span>
+            <button class="badge" id="musicBadge">--</button>
           </div>
           <div class="subhead" id="musicSubhead">Waiting for PC player status</div>
           <div class="items" id="musicItems"></div>
@@ -532,8 +538,8 @@
 
       function hassBadge(state) {
         state = String(state || '').toLowerCase();
-        if (state === 'playing') return 'PLAY';
-        if (state === 'paused') return 'PAUSE';
+        if (state === 'playing') return 'PLAYING';
+        if (state === 'paused') return 'PAUSED';
         if (state === 'off' || state === 'standby') return 'OFF';
         return 'IDLE';
       }
@@ -546,6 +552,7 @@
         return {
           status: `Home Assistant • ${device}`,
           music: {
+            entityId: state.entity_id,
             badge: hassBadge(playerState),
             summary: [device, source, playerState].filter(Boolean).join(' • '),
             state: playerState,
@@ -703,7 +710,11 @@
         ).join('') || empty('No events today');
 
         const playing = String(music.state || '').toLowerCase() === 'playing';
-        setText('musicBadge', music.badge || (playing ? 'PLAY' : 'IDLE'));
+        const musicBadgeEl = document.getElementById('musicBadge');
+        if (musicBadgeEl) {
+          musicBadgeEl.textContent = music.badge || (playing ? 'PLAYING' : 'IDLE');
+          musicBadgeEl.onclick = () => toggleEntity(music.entityId, musicBadgeEl);
+        }
         setText('musicSubhead', music.source || 'Music');
 
         const musicRows = [];
