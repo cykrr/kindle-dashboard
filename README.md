@@ -1,5 +1,7 @@
 # Kindle Dashboard
 
+![Kindle Dashboard Screenshot](screenshot.png)
+
 A fast, simple, and clean HTML/JS dashboard specifically designed for jailbroken e-ink Kindles. Features integration with Home Assistant via Long-Lived Access Tokens and WebSockets.
 
 ## Features
