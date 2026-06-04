@@ -704,16 +704,14 @@
 
         const playing = String(music.state || '').toLowerCase() === 'playing';
         setText('musicBadge', music.badge || (playing ? 'PLAY' : 'IDLE'));
-        setText('musicSubhead', music.summary || defaults.music.summary);
+        setText('musicSubhead', music.source || 'Music');
+
         const musicRows = [];
         if (music.track || music.artist) {
           const detail = [music.artist, music.album].filter(Boolean).join(' • ');
-          const meta = [music.position, music.duration].filter(Boolean).join('/');
-          musicRows.push(item(music.track || 'Unknown track', detail || music.source || 'PC', meta, 'pc-line'));
+          const meta = [music.position, music.duration].filter(Boolean).join(' / ');
+          musicRows.push(item(music.track || 'Unknown track', detail, meta, 'pc-line'));
         }
-        (music.items || []).slice(0, 3).forEach((p, idx) => {
-          musicRows.push(`<div class="item pc-line"><div class="dot ${playing && idx === 0 ? 'on' : ''}"></div><div class="item-main"><div class="item-title">${escapeHtml(p.label || p.title || 'Item')}</div><div class="item-detail">${escapeHtml(p.value || p.detail || '')}</div></div></div>`);
-        });
         document.getElementById('musicItems').innerHTML = musicRows.join('') || empty('Nothing playing');
       }
 
