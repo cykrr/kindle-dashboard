@@ -1,0 +1,796 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f4ec" />
+    <title>Kindle Home</title>
+    <script>window.GO_FULLSCREEN = false;</script>
+    <style>
+      :root {
+        --bg: #f4f1e8;
+        --ink: #171717;
+        --muted: #626262;
+        --soft: #e7e1d2;
+        --panel: #fffdf7;
+        --panel-2: #f8f4ea;
+        --line: #d9d1bf;
+        --dark: #252525;
+      }
+
+      * { box-sizing: border-box; }
+      *::-webkit-scrollbar { display: none; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        scrollbar-width: none;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 16% 18%, rgba(0,0,0,0.07), transparent 27%),
+          radial-gradient(circle at 80% 10%, rgba(0,0,0,0.045), transparent 24%),
+          linear-gradient(135deg, rgba(255,255,255,0.75), rgba(0,0,0,0.025));
+      }
+
+      .shell {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 800px;
+        height: 600px;
+        transform: rotate(270deg) translateX(-100%);
+        transform-origin: top left;
+        padding: 14px;
+        display: grid;
+        grid-template-rows: 198px 1fr;
+        gap: 12px;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .top {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        min-height: 0;
+      }
+
+      .panel {
+        border: 2px solid var(--dark);
+        border-radius: 22px;
+        background: var(--panel);
+        box-shadow: 5px 5px 0 var(--dark);
+        overflow: hidden;
+      }
+
+      .clock-panel {
+        padding: 18px 22px;
+        display: grid;
+        grid-template-columns: 1fr 296px;
+        align-items: center;
+        gap: 20px;
+      }
+
+      .kicker {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-weight: 900;
+        color: var(--muted);
+      }
+
+      .time {
+        margin-top: 2px;
+        font-size: 96px;
+        line-height: 0.9;
+        letter-spacing: -0.08em;
+        font-weight: 950;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .date-line {
+        margin-top: 10px;
+        font-size: 24px;
+        line-height: 1;
+        font-weight: 850;
+      }
+
+      .weather-ish {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .colon {
+        display: inline-block;
+        width: 0.34em;
+        text-align: center;
+        transition: opacity 120ms linear;
+      }
+
+      .colon.dim {
+        opacity: 0.18;
+      }
+
+      .calendar-mini {
+        height: 100%;
+        border-left: 2px solid var(--dark);
+        padding-left: 18px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        gap: 10px;
+      }
+
+      .month-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .month {
+        font-size: 25px;
+        font-weight: 950;
+        letter-spacing: -0.03em;
+      }
+
+      .year {
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 800;
+      }
+
+      .days {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 5px;
+      }
+
+      .day {
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel-2);
+        text-align: center;
+        padding: 6px 2px 7px;
+      }
+
+      .day b {
+        display: block;
+        font-size: 9px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .day span {
+        display: block;
+        margin-top: 4px;
+        font-size: 18px;
+        line-height: 1;
+        font-weight: 950;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .day.today {
+        background: var(--dark);
+        color: white;
+        border-color: var(--dark);
+      }
+
+      .day.today b { color: #dedede; }
+
+      .bottom {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+        min-height: 0;
+      }
+
+      .card {
+        padding: 14px;
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        gap: 10px;
+        min-height: 0;
+      }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 21px;
+        line-height: 1;
+        font-weight: 950;
+        letter-spacing: -0.04em;
+      }
+
+      .badge {
+        min-width: 32px;
+        height: 28px;
+        padding: 0 9px;
+        border-radius: 999px;
+        background: var(--dark);
+        color: white;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 950;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .subhead {
+        min-height: 16px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .items {
+        display: grid;
+        gap: 8px;
+        align-content: start;
+        min-height: 0;
+      }
+
+      .item {
+        min-height: 52px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--panel-2);
+        padding: 9px 10px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .item-main { min-width: 0; }
+      .item-title {
+        font-size: 14px;
+        line-height: 1.12;
+        font-weight: 900;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .item-detail {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .item-meta {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 850;
+        white-space: nowrap;
+        text-align: right;
+      }
+
+      .empty {
+        border: 1px dashed var(--line);
+        border-radius: 14px;
+        color: var(--muted);
+        background: rgba(255,255,255,0.35);
+        padding: 20px 12px;
+        text-align: center;
+        font-weight: 800;
+      }
+
+      .pc-line {
+        grid-template-columns: auto 1fr;
+      }
+      .dot {
+        width: 13px;
+        height: 13px;
+        border-radius: 50%;
+        border: 2px solid var(--dark);
+        background: var(--panel);
+      }
+      .dot.on { background: var(--dark); }
+
+      @media (max-width: 720px) {
+        .shell { padding: 10px; grid-template-rows: 188px 1fr; gap: 10px; }
+        .top { grid-template-columns: 1fr; gap: 10px; }
+        .bottom { gap: 10px; }
+        .time { font-size: 82px; }
+        .clock-panel { grid-template-columns: 1fr 264px; padding: 16px; }
+        .calendar-mini { padding-left: 14px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="top">
+        <article class="panel clock-panel">
+          <div>
+            <div class="kicker" id="greeting">Good day</div>
+            <div class="time"><span id="hour">--</span><span class="colon" id="colon">:</span><span id="minute">--</span></div>
+            <div class="date-line" id="dateLine">Loading date…</div>
+            <div class="weather-ish" id="statusLine">Kindle home • local dashboard</div>
+          </div>
+
+          <div class="calendar-mini">
+            <div class="month-row">
+              <div>
+                <div class="kicker">Calendar</div>
+                <div class="month" id="monthName">Month</div>
+              </div>
+              <div class="year" id="yearName">----</div>
+            </div>
+            <div class="days" id="days"></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="bottom">
+        <article class="panel card">
+          <div class="card-head" style="border-bottom: none;">
+            <h2>Mail</h2>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div id="mailCount" style="font-size: 72px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 8px; color: var(--dark);">0</div>
+            <div class="subhead" id="mailSubhead" style="margin: 0; text-align: center;">No data yet</div>
+          </div>
+          <div id="mailItems" style="display: none;"></div>
+        </article>
+
+        <article class="panel card">
+          <div class="card-head">
+            <h2>Agenda</h2>
+            <span class="badge" id="eventCount">0</span>
+          </div>
+          <div class="subhead" id="agendaSubhead">Today and upcoming</div>
+          <div class="items" id="eventItems"></div>
+        </article>
+
+        <article class="panel card">
+          <div class="card-head">
+            <h2>Music</h2>
+            <span class="badge" id="musicBadge">--</span>
+          </div>
+          <div class="subhead" id="musicSubhead">Waiting for PC player status</div>
+          <div class="items" id="musicItems"></div>
+        </article>
+      </section>
+    </div>
+
+    <script src="hass-config.js"></script>
+    <script>
+      const defaults = {
+        updatedAt: '',
+        status: 'Kindle home • waiting for PC data',
+        mail: { unread: 0, summary: 'No unread mail', items: [] },
+        events: [],
+        music: {
+          badge: 'IDLE',
+          summary: 'Waiting for PC player status',
+          state: 'idle',
+          track: '',
+          artist: '',
+          album: '',
+          position: '',
+          duration: '',
+          source: 'PC',
+          items: [
+            { label: 'Bridge', value: 'update data.js from PC' },
+            { label: 'Players', value: 'Spotify / MPD / playerctl' },
+            { label: 'Updates', value: 'only on changes' }
+          ]
+        }
+      };
+
+      const APP_POLL_MS = 15000;
+      const DATA_RELOAD_MS = 0;
+      const HASS_RECONNECT_MS = 60000;
+      const HASS_CALENDAR_RELOAD_MS = 900000;
+      let lastMinuteKey = '';
+      let lastDateKey = '';
+      let lastWeekKey = '';
+      let lastDataLoad = 0;
+      let lastHassConnectAttempt = 0;
+      let hassSocket = null;
+      let hassMessageId = 1;
+      let hassPendingRequests = {};
+      let lastCalendarRefresh = 0;
+
+      function pad(n) { return String(n).padStart(2, '0'); }
+
+      function setText(id, value) {
+        const el = document.getElementById(id);
+        const text = String(value);
+        if (el && el.textContent !== text) el.textContent = text;
+      }
+
+      function tick() {
+        const now = new Date();
+        const h = now.getHours();
+        const minuteKey = `${h}:${now.getMinutes()}`;
+        if (minuteKey !== lastMinuteKey) {
+          lastMinuteKey = minuteKey;
+          const greeting = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+          setText('greeting', greeting);
+          setText('hour', pad(h));
+          setText('minute', pad(now.getMinutes()));
+        }
+
+        const dateKey = now.toDateString();
+        if (dateKey !== lastDateKey) {
+          lastDateKey = dateKey;
+          setText('dateLine', now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }));
+          setText('monthName', now.toLocaleDateString(undefined, { month: 'long' }));
+          setText('yearName', String(now.getFullYear()));
+          renderWeek(now);
+        }
+      }
+
+      function renderWeek(now) {
+        const target = document.getElementById('days');
+        if (!target) return;
+        const weekKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+        if (weekKey === lastWeekKey) return;
+        lastWeekKey = weekKey;
+        const start = new Date(now);
+        const mondayOffset = (start.getDay() + 6) % 7;
+        start.setDate(start.getDate() - mondayOffset);
+        target.innerHTML = '';
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(start);
+          d.setDate(start.getDate() + i);
+          const el = document.createElement('div');
+          el.className = 'day' + (d.toDateString() === now.toDateString() ? ' today' : '');
+          el.innerHTML = `<b>${d.toLocaleDateString(undefined, { weekday: 'short' })}</b><span>${d.getDate()}</span>`;
+          target.appendChild(el);
+        }
+      }
+
+      function item(title, detail, meta, extraClass = '') {
+        return `<div class="item ${extraClass}"><div class="item-main"><div class="item-title">${escapeHtml(title)}</div><div class="item-detail">${escapeHtml(detail || '')}</div></div><div class="item-meta">${escapeHtml(meta || '')}</div></div>`;
+      }
+
+      function empty(text) {
+        return `<div class="empty">${escapeHtml(text)}</div>`;
+      }
+
+      function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      }
+
+      function formatMediaTime(value) {
+        if (value == null || value === '' || value === 'unknown' || value === 'unavailable') return '';
+        const seconds = Math.max(0, Math.floor(Number(value) || 0));
+        return `${Math.floor(seconds / 60)}:${pad(seconds % 60)}`;
+      }
+
+      function hassBadge(state) {
+        state = String(state || '').toLowerCase();
+        if (state === 'playing') return 'PLAY';
+        if (state === 'paused') return 'PAUSE';
+        if (state === 'off' || state === 'standby') return 'OFF';
+        return 'IDLE';
+      }
+
+      function hassMusicToDashboardData(state) {
+        const attrs = state.attributes || {};
+        const playerState = state.state || 'unknown';
+        const device = attrs.friendly_name || state.entity_id || 'Home Assistant player';
+        const source = attrs.app_name || attrs.source || 'Home Assistant';
+        return {
+          status: `Home Assistant • ${device}`,
+          music: {
+            badge: hassBadge(playerState),
+            summary: [device, source, playerState].filter(Boolean).join(' • '),
+            state: playerState,
+            track: attrs.media_title || device,
+            artist: attrs.media_artist || attrs.media_album_artist || '',
+            album: attrs.media_album_name || '',
+            position: formatMediaTime(attrs.media_position),
+            duration: formatMediaTime(attrs.media_duration),
+            source,
+            items: [
+              { label: 'Device', value: device },
+              { label: 'Player', value: source },
+              { label: 'State', value: playerState },
+              { label: 'Updated', value: String(state.last_updated || state.last_changed || '').replace('T', ' ').replace('+00:00', 'Z').slice(0, 19) }
+            ]
+          }
+        };
+      }
+
+      function asArray(value) {
+        if (!value) return [];
+        return Array.isArray(value) ? value : [value];
+      }
+
+      function hassMailToDashboardData(state) {
+        const attrs = state.attributes || {};
+        const unread = Number(state.state) || Number(attrs.unread) || Number(attrs.unseen) || 0;
+        const rawMessages = asArray(attrs.messages || attrs.message || attrs.emails || attrs.email || attrs.subjects || attrs.subject);
+        const items = rawMessages.slice(0, 4).map((m, index) => {
+          if (typeof m === 'string') return { from: 'Mail', subject: m, when: '' };
+          return {
+            from: m.from || m.sender || m.name || m.mailbox || 'Mail',
+            subject: m.subject || m.title || m.summary || m.body || `Message ${index + 1}`,
+            when: m.date || m.when || m.received || ''
+          };
+        });
+
+        if (!items.length && unread > 0) {
+          items.push({ from: attrs.friendly_name || 'IMAP', subject: `${unread} unread message${unread === 1 ? '' : 's'}`, when: '' });
+        }
+
+        return {
+          mail: {
+            unread,
+            summary: unread ? `${unread} unread from Home Assistant IMAP` : 'Inbox quiet',
+            items
+          }
+        };
+      }
+
+      function calendarEntities() {
+        const cfg = window.HASS_CONFIG || {};
+        const raw = cfg.calendarEntities || cfg.calendarEntity || ['calendar.it', 'calendar.calendario'];
+        const parts = [];
+        asArray(raw).forEach(v => String(v).split(',').forEach(part => parts.push(part)));
+        return parts.map(v => v.trim()).filter(Boolean);
+      }
+
+      function formatEventTime(event) {
+        const start = event.start || {};
+        const raw = start.dateTime || start.date || event.start_time || event.start;
+        if (!raw) return '';
+        if (start.date || /^\d{4}-\d{2}-\d{2}$/.test(String(raw))) return 'all day';
+        const date = new Date(raw);
+        if (Number.isNaN(date.getTime())) return '';
+        return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+      }
+
+      function hassCalendarToDashboardData(result) {
+        const response = (result && result.response) || result || {};
+        const events = [];
+        Object.keys(response).forEach(entity => {
+          const bucket = response[entity] || {};
+          asArray(bucket.events).forEach(event => {
+            events.push({
+              time: formatEventTime(event),
+              title: event.summary || event.title || 'Calendar event',
+              detail: event.location || event.description || entity
+            });
+          });
+        });
+        events.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+        return {
+          agendaSummary: events.length ? 'Home Assistant calendar' : 'No upcoming calendar events',
+          events: events.slice(0, 4)
+        };
+      }
+
+      function mergeHassData(partial) {
+        window.KINDLE_HASS_DATA = window.KINDLE_HASS_DATA || {};
+        if (partial.status) window.KINDLE_HASS_DATA.status = partial.status;
+        if (partial.music) window.KINDLE_HASS_DATA.music = Object.assign({}, window.KINDLE_HASS_DATA.music || {}, partial.music);
+        if (partial.mail) window.KINDLE_HASS_DATA.mail = Object.assign({}, window.KINDLE_HASS_DATA.mail || {}, partial.mail);
+        if (partial.agendaSummary) window.KINDLE_HASS_DATA.agendaSummary = partial.agendaSummary;
+        if (partial.events) window.KINDLE_HASS_DATA.events = partial.events;
+        renderData();
+      }
+
+      let lastDataSignature = null;
+
+      function renderData() {
+        const sourceData = Object.assign({}, window.KINDLE_DASHBOARD_DATA || {});
+        if (window.KINDLE_HASS_DATA) {
+          sourceData.status = window.KINDLE_HASS_DATA.status || sourceData.status;
+          sourceData.music = Object.assign({}, sourceData.music || {}, window.KINDLE_HASS_DATA.music || {});
+          sourceData.mail = Object.assign({}, sourceData.mail || {}, window.KINDLE_HASS_DATA.mail || {});
+          sourceData.agendaSummary = window.KINDLE_HASS_DATA.agendaSummary || sourceData.agendaSummary;
+          sourceData.events = window.KINDLE_HASS_DATA.events || sourceData.events;
+        }
+
+        const dataSignature = JSON.stringify({ base: window.KINDLE_DASHBOARD_DATA || {}, hass: window.KINDLE_HASS_DATA || {} });
+        if (dataSignature === lastDataSignature) return;
+        lastDataSignature = dataSignature;
+
+        const data = Object.assign({}, defaults, sourceData);
+        const mail = Object.assign({}, defaults.mail, data.mail || {});
+        const music = Object.assign({}, defaults.music, data.music || {});
+        const events = Array.isArray(data.events) ? data.events : [];
+
+        setText('statusLine', data.status || defaults.status);
+
+        setText('mailCount', mail.unread || (mail.items ? mail.items.length : 0) || 0);
+        setText('mailSubhead', mail.summary || defaults.mail.summary);
+        document.getElementById('mailItems').innerHTML = (mail.items || []).slice(0, 4).map(m =>
+          item(m.from || 'Mail', m.subject || m.detail || '', m.when || '')
+        ).join('') || empty('Inbox quiet');
+
+        setText('eventCount', events.length);
+        setText('agendaSubhead', data.agendaSummary || 'Today and upcoming');
+        document.getElementById('eventItems').innerHTML = events.slice(0, 4).map(e =>
+          item(e.title || 'Event', e.detail || e.where || '', e.time || '')
+        ).join('') || empty('No events today');
+
+        const playing = String(music.state || '').toLowerCase() === 'playing';
+        setText('musicBadge', music.badge || (playing ? 'PLAY' : 'IDLE'));
+        setText('musicSubhead', music.summary || defaults.music.summary);
+        const musicRows = [];
+        if (music.track || music.artist) {
+          const detail = [music.artist, music.album].filter(Boolean).join(' • ');
+          const meta = [music.position, music.duration].filter(Boolean).join('/');
+          musicRows.push(item(music.track || 'Unknown track', detail || music.source || 'PC', meta, 'pc-line'));
+        }
+        (music.items || []).slice(0, 3).forEach((p, idx) => {
+          musicRows.push(`<div class="item pc-line"><div class="dot ${playing && idx === 0 ? 'on' : ''}"></div><div class="item-main"><div class="item-title">${escapeHtml(p.label || p.title || 'Item')}</div><div class="item-detail">${escapeHtml(p.value || p.detail || '')}</div></div></div>`);
+        });
+        document.getElementById('musicItems').innerHTML = musicRows.join('') || empty('Nothing playing');
+      }
+
+      function loadData() {
+        const old = document.getElementById('data-js');
+        if (old) old.remove();
+        const script = document.createElement('script');
+        script.id = 'data-js';
+        script.src = 'data.js?ts=' + Date.now();
+        script.onload = renderData;
+        script.onerror = renderData;
+        document.body.appendChild(script);
+      }
+
+      function hassWsUrl(rawUrl) {
+        const url = String(rawUrl || '').replace(/\/$/, '');
+        if (!url) return '';
+        if (url.indexOf('https://') === 0) return 'wss://' + url.slice('https://'.length) + '/api/websocket';
+        if (url.indexOf('http://') === 0) return 'ws://' + url.slice('http://'.length) + '/api/websocket';
+        return url.replace(/^\/+/, '').replace(/^/, 'wss://') + '/api/websocket';
+      }
+
+      function handleHassState(state) {
+        const cfg = window.HASS_CONFIG || {};
+        const musicEntity = cfg.entity || cfg.musicEntity || 'media_player.googlehome1844';
+        const mailEntity = cfg.mailEntity || 'sensor.imap_me_messages';
+        const calendars = calendarEntities();
+        if (!state || !state.entity_id) return;
+        if (state.entity_id === musicEntity) mergeHassData(hassMusicToDashboardData(state));
+        if (state.entity_id === mailEntity) mergeHassData(hassMailToDashboardData(state));
+        if (calendars.indexOf(state.entity_id) !== -1) requestHassCalendarEvents(true);
+      }
+
+      function requestHassCalendarEvents(force) {
+        if (!hassSocket || hassSocket.readyState !== WebSocket.OPEN) return;
+        const nowMs = Date.now();
+        if (!force && nowMs - lastCalendarRefresh < HASS_CALENDAR_RELOAD_MS) return;
+        lastCalendarRefresh = nowMs;
+
+        const entities = calendarEntities();
+        if (!entities.length) return;
+        const start = new Date();
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 7);
+
+        const id = hassMessageId++;
+        hassPendingRequests[id] = 'calendar_events';
+        hassSocket.send(JSON.stringify({
+          id,
+          type: 'call_service',
+          domain: 'calendar',
+          service: 'get_events',
+          target: { entity_id: entities },
+          service_data: {
+            start_date_time: start.toISOString(),
+            end_date_time: end.toISOString()
+          },
+          return_response: true
+        }));
+      }
+
+      function connectHassWs() {
+        const cfg = window.HASS_CONFIG || {};
+        const token = cfg.token || cfg.HASS_TOKEN || '';
+        const wsUrl = hassWsUrl(cfg.url || cfg.HASS_URL || '');
+        if (!wsUrl || !token) return;
+        if (hassSocket && (hassSocket.readyState === WebSocket.OPEN || hassSocket.readyState === WebSocket.CONNECTING)) return;
+
+        try {
+          hassSocket = new WebSocket(wsUrl);
+        } catch (error) {
+          setText('musicSubhead', 'HA WebSocket unavailable; using local data.js');
+          return;
+        }
+
+        hassSocket.onmessage = event => {
+          let msg;
+          try { msg = JSON.parse(event.data); } catch (_) { return; }
+
+          if (msg.type === 'auth_required') {
+            hassSocket.send(JSON.stringify({ type: 'auth', access_token: token }));
+            return;
+          }
+
+          if (msg.type === 'auth_ok') {
+            setText('musicSubhead', 'Home Assistant connected');
+            hassSocket.send(JSON.stringify({ id: hassMessageId++, type: 'get_states' }));
+            hassSocket.send(JSON.stringify({ id: hassMessageId++, type: 'subscribe_events', event_type: 'state_changed' }));
+            requestHassCalendarEvents(true);
+            return;
+          }
+
+          if (msg.type === 'auth_invalid') {
+            setText('musicSubhead', 'HA auth failed');
+            return;
+          }
+
+          if (msg.type === 'result' && hassPendingRequests[msg.id] === 'calendar_events') {
+            delete hassPendingRequests[msg.id];
+            if (msg.success !== false) mergeHassData(hassCalendarToDashboardData(msg.result));
+            return;
+          }
+
+          if (msg.type === 'result' && Array.isArray(msg.result)) {
+            msg.result.forEach(handleHassState);
+            return;
+          }
+
+          if (msg.type === 'event' && msg.event && msg.event.event_type === 'state_changed') {
+            handleHassState(msg.event.data && msg.event.data.new_state);
+          }
+        };
+
+        hassSocket.onclose = () => {
+          hassSocket = null;
+          setText('musicSubhead', 'HA disconnected; will reconnect');
+        };
+
+        hassSocket.onerror = () => {
+          setText('musicSubhead', 'HA WebSocket error; using local data.js');
+        };
+      }
+
+      function heartbeat() {
+        tick();
+        const now = Date.now();
+        if (DATA_RELOAD_MS > 0 && now - lastDataLoad >= DATA_RELOAD_MS) {
+          lastDataLoad = now;
+          loadData();
+        }
+        if (now - lastHassConnectAttempt >= HASS_RECONNECT_MS) {
+          lastHassConnectAttempt = now;
+          connectHassWs();
+        }
+        requestHassCalendarEvents(false);
+      }
+
+      renderData();
+      loadData();
+      lastDataLoad = 0;
+      lastHassConnectAttempt = 0;
+      heartbeat();
+      setInterval(heartbeat, APP_POLL_MS);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+.env
+hass-config.js
+unban_public_ip
+data.js
+*.png
+!screenshot.png

@@ -1,0 +1,24 @@
+{
+    "items": [
+        {
+            "name": "Kindle Dashboard",
+            "priority": 10,
+            "items": [
+                {
+                    "name": "Start Dashboard",
+                    "priority": 1,
+                    "action": "/mnt/us/documents/kindle-dashboard/launch.sh",
+                    "params": "",
+                    "exitmenu": true
+                },
+                {
+                    "name": "Stop Dashboard",
+                    "priority": 2,
+                    "action": "/mnt/us/documents/kindle-dashboard/stop.sh",
+                    "params": "",
+                    "exitmenu": true
+                }
+            ]
+        }
+    ]
+}
