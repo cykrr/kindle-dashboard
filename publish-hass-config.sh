@@ -7,6 +7,7 @@ SSH_PORT="${SSH_PORT:-2222}"
 REMOTE_DIR="${REMOTE_DIR:-/mnt/us/documents/kindle-dashboard}"
 HASS_ENTITY="${HASS_ENTITY:-media_player.googlehome1844}"
 HASS_MAIL_ENTITY="${HASS_MAIL_ENTITY:-sensor.imap_me_messages}"
+HASS_MAIL_LABEL="${HASS_MAIL_LABEL:-Mail}"
 HASS_CALENDAR_ENTITIES="${HASS_CALENDAR_ENTITIES:-calendar.it,calendar.calendario}"
 OUT_FILE="${OUT_FILE:-hass-config.js}"
 
@@ -43,6 +44,7 @@ url = values.get('HASS_URL') or values.get('HA_URL')
 token = values.get('HASS_TOKEN') or values.get('HA_TOKEN')
 entity = values.get('HASS_ENTITY') or values.get('HA_ENTITY') or entity
 mail_entity = values.get('HASS_MAIL_ENTITY') or values.get('HA_MAIL_ENTITY') or mail_entity
+mail_label = values.get('HASS_MAIL_LABEL') or values.get('HA_MAIL_LABEL') or 'Mail'
 calendar_entities = values.get('HASS_CALENDAR_ENTITIES') or values.get('HA_CALENDAR_ENTITIES') or calendar_entities
 calendar_entities = [x.strip() for x in calendar_entities.split(',') if x.strip()]
 
@@ -56,6 +58,7 @@ config = {
     'entity': entity,
     'musicEntity': entity,
     'mailEntity': mail_entity,
+    'mailLabel': mail_label,
     'calendarEntities': calendar_entities,
 }
 out_path.write_text('window.HASS_CONFIG = ' + json.dumps(config, ensure_ascii=False, indent=2) + ';\n')
