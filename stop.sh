@@ -4,6 +4,7 @@
 
 DASHBOARD_DIR="/mnt/us/documents/kindle-dashboard"
 PID_FILE="$DASHBOARD_DIR/browser.pid"
+SETTINGS_PID_FILE="$DASHBOARD_DIR/settings-server.pid"
 
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
@@ -12,6 +13,13 @@ if [ -f "$PID_FILE" ]; then
     rm -f "$PID_FILE"
 else
     killall -9 kindle_browser 2>/dev/null || true
+fi
+
+if [ -f "$SETTINGS_PID_FILE" ]; then
+    SETTINGS_PID=$(cat "$SETTINGS_PID_FILE")
+    echo "Killing settings server $SETTINGS_PID..."
+    kill "$SETTINGS_PID" 2>/dev/null || true
+    rm -f "$SETTINGS_PID_FILE"
 fi
 
 echo "Restarting Kindle GUI..."
