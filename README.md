@@ -1,26 +1,33 @@
-# Kindle Dashboard
+# Kindle Dashboard (Native GTK)
 
-![Kindle Dashboard Screenshot](screenshot.png)
-
-
-A fast, simple, and clean HTML/JS dashboard specifically designed for jailbroken e-ink Kindles. Features integration with Home Assistant via Long-Lived Access Tokens and WebSockets.
+A native GTK+ 2.24 dashboard for jailbroken e-ink Kindles. Replaces the Chromium-based dashboard with a ~9MB RSS native app for maximum battery life.
 
 ## Features
-- E-ink optimized UI (high contrast, no animations)
-- Displays Mail count
-- Music currently playing
-- Calendar/Agenda
-- Two-way Kindle brightness synchronization with Home Assistant
-- Can run natively via KUAL
+- E-ink optimized high-contrast UI
+- Real-time clock
+- Calendar
+- Brightness control (direct sysfs)
+- Battery status
+- Home Assistant integration (WebSocket)
+- PC media/macro control (SSE + HTTP)
 
-## Setup
-1. Create a `.env` file containing your Home Assistant URL, token, and entities (e.g. `HASS_URL`, `HASS_TOKEN`, `HASS_BRIGHTNESS_ENTITY`, etc).
-2. Run `./publish-hass-config.sh` to compile your `.env` into `hass-config.js` and upload to your Kindle.
-3. Deploy the application files using `./install.sh`.
-4. Launch using `launch.sh` (or via KUAL).
+## Architecture
+- **Kindle**: Go + GTK2 binary (~1.7MB, 9MB RSS)
+- **Windows**: Go daemon for PC macros and media status
+- **Home Assistant**: Direct WebSocket connection
+
+## Build Pipeline
+1. `./build-all.sh toolchain` — Download pre-built KHF toolchain
+2. `./build-all.sh gtk` — Cross-compile GTK 2.24.33
+3. `./build-all.sh test` — Build Go binary
+4. `./install.sh` — Deploy to Kindle
 
 ## Files
-- `index.html`: The main dashboard UI.
-- `launch.sh`: Script to launch the browser in true fullscreen mode.
-- `stop.sh`: Script to cleanly kill the dashboard and restore the Kindle GUI.
-- `menu.json`: KUAL menu configuration.
+| File | Purpose |
+|------|---------|
+| `src/main.go` | Dashboard app with cgo GTK bindings |
+| `launch.sh` | Start native dashboard on Kindle |
+| `install.sh` | Deploy to Kindle |
+| `build-test.sh` | Cross-compile Go binary |
+| `setup-env.sh` | Cross-compilation environment |
+| Windows daemon | `main.go`, `config.go`, `sse.go`, `media.go`, `actions.go`, `powershell.go` |

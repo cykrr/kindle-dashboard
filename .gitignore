@@ -12,3 +12,9 @@ macro-daemon.exe
 # Abandoned experiments
 /nowplaying/
 /null
+
+# Native build artifacts
+deploy/
+logs/
+sources/
+kindle-pkg-config
