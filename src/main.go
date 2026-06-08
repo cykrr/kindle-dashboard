@@ -1,9 +1,15 @@
 package main
 
-import "time"
+import (
+	"flag"
+	"time"
+)
 
 func main() {
-	dash = NewDashboard()
+	hwLandscape := flag.Bool("hw-landscape", false, "Ask Kindle window manager for hardware landscape orientation")
+	flag.Parse()
+
+	dash = NewDashboard(DashboardOptions{HardwareLandscape: *hwLandscape})
 	dash.Show()
 	dash.UpdateClock(time.Now())
 

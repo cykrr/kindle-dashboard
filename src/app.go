@@ -18,17 +18,29 @@ extern void onQuitClicked();
 // Call this before any GTK/GLib usage for GTK 2.10 compat
 static void w_init() { g_type_init(); }
 
-static GtkWidget* w_win() {
+static GtkWidget* w_win(gboolean hw_landscape) {
 	GtkWidget *w = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-	gtk_window_set_title(GTK_WINDOW(w), "Kindle Dashboard");
+	if (hw_landscape) {
+		// Kindle winmgr parses the title as window params.  O:LR declares that
+		// this application supports landscape orientations, which lets winmgr
+		// call Lab126's native ligl screen rotation path.
+		gtk_window_set_title(GTK_WINDOW(w), "L:A_N:application_ID:kindle-dashboard_module:dashboard_O:LR_PC:N");
+	} else {
+		gtk_window_set_title(GTK_WINDOW(w), "Kindle Dashboard");
+		gtk_window_set_keep_above(GTK_WINDOW(w), TRUE);
+	}
 	gtk_window_set_resizable(GTK_WINDOW(w), FALSE);
 	gtk_window_set_decorated(GTK_WINDOW(w), FALSE);
-	gtk_window_set_keep_above(GTK_WINDOW(w), TRUE);
 	gtk_window_move(GTK_WINDOW(w), 0, 0);
 	// Force exact size
 	GdkGeometry geom;
-	geom.min_width = 600; geom.max_width = 600;
-	geom.min_height = 800; geom.max_height = 800;
+	if (hw_landscape) {
+		geom.min_width = 800; geom.max_width = 800;
+		geom.min_height = 600; geom.max_height = 600;
+	} else {
+		geom.min_width = 600; geom.max_width = 600;
+		geom.min_height = 800; geom.max_height = 800;
+	}
 	gtk_window_set_geometry_hints(GTK_WINDOW(w), NULL, &geom,
 		GDK_HINT_MIN_SIZE | GDK_HINT_MAX_SIZE);
 	return w;
@@ -122,6 +134,13 @@ import (
 // ─── State ───
 var dash *Dashboard
 
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
 //export onApplyBrightness
 func onApplyBrightness() {
 	if dash == nil {
@@ -135,8 +154,14 @@ func onApplyBrightness() {
 func onQuitClicked() { C.gtk_main_quit() }
 
 // ─── Dashboard ───
+type DashboardOptions struct {
+	HardwareLandscape bool
+}
+
 type Dashboard struct {
 	window *C.GtkWidget
+
+	options DashboardOptions
 
 	// Clock panel
 	greeting *C.GtkWidget
@@ -157,11 +182,11 @@ type Dashboard struct {
 	currentView int
 }
 
-func NewDashboard() *Dashboard {
+func NewDashboard(options DashboardOptions) *Dashboard {
 	C.w_init()
 	C.gtk_init(nil, nil)
-	d := &Dashboard{}
-	d.window = C.w_win()
+	d := &Dashboard{options: options}
+	d.window = C.w_win(C.gboolean(boolToInt(options.HardwareLandscape)))
 	C.w_signal(d.window, C.CString("destroy"), C.GCallback(unsafe.Pointer(C.gtk_main_quit)))
 
 	root := C.w_vbox(0, 0)
@@ -195,7 +220,9 @@ func NewDashboard() *Dashboard {
 
 func (d *Dashboard) Show() {
 	C.w_show_all(d.window)
-	C.w_override()
+	if !d.options.HardwareLandscape {
+		C.w_override()
+	}
 }
 
 func (d *Dashboard) Loop() { C.gtk_main() }
