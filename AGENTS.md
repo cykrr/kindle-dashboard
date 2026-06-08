@@ -8,46 +8,87 @@ Welcome! This guide explains how this repository is structured, how to navigate 
 
 The project has been modularized into separate, single-responsibility files for cleaner code and easier iteration:
 
-- **[index.html](file:///home/krr/pw/index.html)**: Contains the semantic HTML structure of the dashboard layout (Header with Clock/Calendar, Devices, Mail, Agenda, and Music widgets, plus Settings drawer).
-- **[index.css](file:///home/krr/pw/index.css)**: Holds all styling, responsive queries, and theming definitions (designed for e-ink friendly high-contrast palettes).
-- **[app.js](file:///home/krr/pw/app.js)**: Handles all interactive logic including clock/calendar rendering, gestures for setting drawer dragging, Home Assistant WebSocket connection, on-device brightness/rotation API polling, and fallbacks.
-- **[hass-config.js](file:///home/krr/pw/hass-config.js)** (generated): Injected configuration values containing credentials and endpoints for Home Assistant.
-- **[data.js](file:///home/krr/pw/data.js)**: Fallback mock data containing default stats when Home Assistant or on-device APIs are disconnected.
+### Kindle Dashboard (frontend — runs in Chromium on the Kindle)
+- **[index.html](file:///home/krr/pw/index.html)**: Semantic HTML structure of the dashboard layout (Header with Clock/Calendar, Devices, Mail, Agenda, and Music widgets, plus Settings drawer).
+- **[index.css](file:///home/krr/pw/index.css)**: All styling, responsive queries, and theming definitions (e-ink friendly high-contrast palettes).
+- **[app.js](file:///home/krr/pw/app.js)**: Interactive logic — clock/calendar rendering, gesture handling, Home Assistant WebSocket connection, on-device brightness/rotation API polling, fallbacks.
+- **[hass-config.js](file:///home/krr/pw/hass-config.js)** (generated): Injected config values with HASS credentials and endpoints.
+- **[data.js](file:///home/krr/pw/data.js)**: Fallback mock data when HASS or on-device APIs are disconnected.
+
+### Windows Macro Daemon (Go backend — runs on Windows)
+The daemon provides an HTTP API (`:8080`) that the Kindle dashboard queries for system status and actions. It is modularized into single-responsibility files:
+
+| File | Responsibility |
+|---|---|
+| **[main.go](file:///home/krr/pw/main.go)** | Entry point, HTTP server, route registration |
+| **[config.go](file:///home/krr/pw/config.go)** | Configuration loaded from `.env` |
+| **[sse.go](file:///home/krr/pw/sse.go)** | SSE (Server-Sent Events) broker for real-time status streaming |
+| **[media.go](file:///home/krr/pw/media.go)** | Windows SMTC API integration — detects currently playing media (title, artist, playback status) via WinRT COM interop |
+| **[actions.go](file:///home/krr/pw/actions.go)** | Action dispatch — play/pause, mute mic, sleep, screenshot, etc. |
+| **[powershell.go](file:///home/krr/pw/powershell.go)** | PowerShell execution helpers (hidden window, optional elevation via gsudo) with CLIXML error decoding |
+| **[go.mod](file:///home/krr/pw/go.mod)** | Go module definition |
 
 ### Kindle On-Device API & Control Scripts
-- **[settings-server.sh](file:///home/krr/pw/settings-server.sh)** / **[settings-api.sh](file:///home/krr/pw/settings-api.sh)**: Simple HTTP server running on the Kindle (`http://127.0.0.1:8177`) to read and write Kindle system settings (brightness, battery, orientation).
-- **[launch.sh](file:///home/krr/pw/launch.sh)**: Main orchestrator run on the Kindle. Stops the Kindle UI (`lab126_gui`), runs `settings-server.sh`, and starts Chromium in kiosk/fullscreen mode pointing to `index.html`.
-- **[stop.sh](file:///home/krr/pw/stop.sh)**: Cleans up the Chromium process and local settings API, returning the Kindle to its standard interface.
+- **[settings-server.sh](file:///home/krr/pw/settings-server.sh)** / **[settings-api.sh](file:///home/krr/pw/settings-api.sh)**: Simple HTTP server on the Kindle (`http://127.0.0.1:8177`) to read/write Kindle system settings (brightness, battery, orientation).
+- **[launch.sh](file:///home/krr/pw/launch.sh)**: Main orchestrator — stops Kindle UI (`lab126_gui`), runs `settings-server.sh`, starts Chromium in kiosk mode pointing to `index.html`.
+- **[stop.sh](file:///home/krr/pw/stop.sh)**: Stops Chromium and the settings API, returning the Kindle to its standard interface.
 
 ---
 
 ## 🚀 Iteration & Deployment
 
 ### 1. Local Development
-Because the application consists of vanilla HTML, CSS, and JS, you can test UI elements and logic by simply opening [index.html](file:///home/krr/pw/index.html) in any browser.
 
-> [!NOTE]
-> When testing locally, calls to the Kindle settings API (`http://127.0.0.1:8177`) will fail. The app gracefully falls back to displaying orientation/battery as unavailable without crashing.
+**Web UI**: Open `index.html` in any browser. Kindle API calls will gracefully fall back to showing `unavailable`.
+
+**Macro Daemon**: Build and run on Windows:
+```bash
+# From WSL:
+GOOS=windows GOARCH=amd64 go build -o macro-daemon.exe .
+# Then copy to Windows and run:
+cp macro-daemon.exe /mnt/c/Users/krr/temp-macro.exe
+pwsh.exe -Command "Start-Process -FilePath C:\KindleDashboard\macro-daemon.exe"
+```
 
 ### 2. Config Setup
-Configuration for Home Assistant is derived from `.env`. Ensure your `.env` contains the required keys (e.g., `HASS_URL`, `HASS_TOKEN`).
-You can optionally define `HASS_BRIGHTNESS_ENTITY` in your `.env` to enable two-way brightness synchronization between the Kindle device and Home Assistant.
-Run the helper script to compile and upload the HASS configuration:
+
+Configuration for both HASS and the macro daemon comes from `.env`:
+
+| Variable | Purpose |
+|---|---|
+| `HASS_URL` / `HASS_TOKEN` | Home Assistant connection |
+| `HASS_BRIGHTNESS_ENTITY` | Optional: entity for two-way brightness sync |
+| `MACRO_API_KEY` | Shared secret for daemon API auth |
+| `MACRO_PORT` | HTTP listen port (default `8080`) |
+| `MACRO_GSUDO` | Path to `gsudo.exe` for privilege elevation |
+| `MACRO_LOG_PATH` | Log file path on Windows |
+
 ```bash
+# Compile HASS config for Kindle:
 ./publish-hass-config.sh
 ```
 
 ### 3. Deploying Code Changes
-Whenever you update code (HTML, CSS, or JS) or scripts, deploy them to the Kindle device by running:
+
+**Kindle dashboard files** (HTML/CSS/JS, scripts):
 ```bash
 ./install.sh
 ```
-This script automates copying [index.html](file:///home/krr/pw/index.html), [index.css](file:///home/krr/pw/index.css), [app.js](file:///home/krr/pw/app.js), and supporting files to the remote path `/mnt/us/documents/kindle-dashboard` via SSH/SCP.
+Copies to `/mnt/us/documents/kindle-dashboard` on the Kindle via SSH/SCP.
+
+**Macro daemon** (Go binary):
+```bash
+GOOS=windows GOARCH=amd64 go build -o macro-daemon.exe .
+cp macro-daemon.exe /mnt/c/Users/krr/temp-macro.exe
+pwsh.exe -Command "taskkill /F /IM macro-daemon.exe /T 2>null; Start-Sleep -Milliseconds 500; Copy-Item -Path C:\Users\krr\temp-macro.exe -Destination C:\KindleDashboard\macro-daemon.exe -Force; Start-Process -FilePath C:\KindleDashboard\macro-daemon.exe"
+```
 
 ---
 
 ## ⚠️ Important Implementation Rules for Agents
 
-1. **Keep CSS/JS External**: Do not bundle styles or scripts inline inside [index.html](file:///home/krr/pw/index.html) again. Keep HTML, CSS, and JS separate.
-2. **ES5/Old Chromium Compatibility**: The Kindle browser runs an older version of Chromium. Avoid using modern syntax features (like native ES Modules `<script type="module">` or other experimental APIs) that might crash older browsers. Use standard, broadly compatible Javascript.
-3. **Keep Deployment Scripts Synced**: If you add new assets (like images, external libraries, or additional files), you **must** update the `scp` line in [install.sh](file:///home/krr/pw/install.sh) to ensure they get deployed onto the Kindle.
+1. **Keep CSS/JS External**: Do not bundle styles or scripts inline inside [index.html](file:///home/krr/pw/index.html). Keep HTML, CSS, and JS separate.
+2. **ES5/Old Chromium Compatibility**: The Kindle browser runs an older Chromium. Avoid modern syntax (ES Modules, optional chaining, etc.). Use broadly compatible Javascript.
+3. **Keep Deployment Scripts Synced**: If you add new assets, update the `scp` line in [install.sh](file:///home/krr/pw/install.sh).
+4. **Go Files Are Modular**: Keep `main.go`, `config.go`, `sse.go`, `media.go`, `actions.go`, `powershell.go` as single-responsibility files. Do not merge them back into a monolith.
+5. **Cross-Compile Reminder**: The daemon targets Windows. Always build with `GOOS=windows GOARCH=amd64`. The `syscall.SysProcAttr` fields (`HideWindow`, `CreationFlags`) are Windows-only and will not compile on Linux — that's expected.

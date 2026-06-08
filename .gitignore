@@ -5,3 +5,10 @@ data.js
 *.png
 !screenshot.png
 /.antigravitycli
+
+# Go binaries
+macro-daemon.exe
+
+# Abandoned experiments
+/nowplaying/
+/null
