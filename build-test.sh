@@ -25,7 +25,8 @@ export PKG_CONFIG_SYSROOT_DIR="${SYSROOT}"
 # cgo needs to find GTK headers in the sysroot
 export CPATH="${SYSROOT_INC}:${SYSROOT_INC}/gtk-2.0:${SYSROOT_INC}/glib-2.0:${SYSROOT_INC}/pango-1.0:${SYSROOT_INC}/cairo:${SYSROOT_INC}/atk-1.0:${SYSROOT_INC}/gdk-pixbuf-2.0:${SYSROOT_INC}/pixman-1:${SYSROOT_INC}/freetype2:${SYSROOT_INC}/libpng16"
 GLIB_CFG="${SYSROOT}/usr/lib/glib-2.0/include"
-export CGO_CFLAGS="-I${SYSROOT_INC} -I${SYSROOT_INC}/gtk-2.0 -I${SYSROOT_INC}/glib-2.0 -I${SYSROOT_INC}/pango-1.0 -I${SYSROOT_INC}/cairo -I${SYSROOT_INC}/atk-1.0 -I${SYSROOT_INC}/gdk-pixbuf-2.0 -I${SYSROOT_INC}/pixman-1 -I${SYSROOT_INC}/freetype2 -I${SYSROOT_INC}/libpng16 -I${GLIB_CFG} -I${SYSROOT}/usr/lib/gtk-2.0/include"
+export CGO_CFLAGS="-I${SYSROOT_INC} -I${SYSROOT_INC}/gtk-2.0 -I${SYSROOT_INC}/glib-2.0 -I${SYSROOT_INC}/pango-1.0 -I${SYSROOT_INC}/cairo -I${SYSROOT_INC}/atk-1.0 -I${SYSROOT_INC}/gdk-pixbuf-2.0 -I${SYSROOT_INC}/pixman-1 -I${SYSROOT_INC}/freetype2 -I${SYSROOT_INC}/libpng16 -I${GLIB_CFG} -I${SYSROOT}/usr/lib/gtk-2.0/include "
+
 export CGO_LDFLAGS="-L${SYSROOT}/usr/lib -L${SYSROOT}/lib -L${TC_BUILD_DIR}/lib -Wl,-rpath-link,${SYSROOT}/usr/lib -Wl,-rpath-link,${SYSROOT}/lib -lgtk-x11-2.0 -lgdk-x11-2.0 -lgdk_pixbuf-2.0 -lpangocairo-1.0 -lpango-1.0 -lcairo -latk-1.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0 -lX11 -lXext -lXrender"
 
 cd "${SRC_DIR}"
