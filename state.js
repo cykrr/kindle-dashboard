@@ -37,6 +37,7 @@
     batteryLevel: null,
     batteryStatus: '',
     orientation: 270, // will be updated from query or local storage
+    currentViewIndex: 1, // 0: calendar, 1: dashboard, 2: launcher
     apiReady: false,
     settingsOpen: false,
     settingsOffset: 0

@@ -124,6 +124,13 @@ case "$method:$path" in
   GET:/battery-status)
     reply '200 OK' "$(battery_status)"
     ;;
+  GET:/version)
+    if [ -f "$DASHBOARD_DIR/version.txt" ]; then
+      reply '200 OK' "$(cat "$DASHBOARD_DIR/version.txt")"
+    else
+      reply '200 OK' "0"
+    fi
+    ;;
   POST:/brightness)
     value=$(printf '%s' "$query" | sed -n 's/.*value=\([0-9][0-9]*\).*/\1/p' | head -n 1)
     if [ -z "$value" ]; then

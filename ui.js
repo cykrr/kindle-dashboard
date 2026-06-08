@@ -1,8 +1,9 @@
 (function(window) {
   window.uiModule = {
+    views: ['view-calendar', 'view-dashboard', 'view-launcher'],
     settingsGesture: {
       active: false,
-      mode: '',
+      mode: '', // 'open', 'close', or 'viewSwipe'
       startX: 0,
       startY: 0,
       startOffset: 0
@@ -109,6 +110,38 @@
       this.setSettingsDrawerOffset(open ? 0 : this.settingsPanelSize(), animated !== false);
     },
 
+    switchView: function(newIndex) {
+      if (newIndex < 0 || newIndex >= this.views.length) return;
+      
+      // Hide current
+      var currentId = this.views[window.localDeviceState.currentViewIndex];
+      var currentEl = document.getElementById(currentId);
+      if (currentEl) {
+        currentEl.classList.remove('active');
+        currentEl.classList.add('hidden');
+      }
+
+      // Update index and show new
+      window.localDeviceState.currentViewIndex = newIndex;
+      try { localStorage.setItem('currentViewIndex', newIndex); } catch (_) {}
+      
+      var newId = this.views[newIndex];
+      var newEl = document.getElementById(newId);
+      if (newEl) {
+        newEl.classList.remove('hidden');
+        newEl.classList.add('active');
+      }
+
+      // Update indicators
+      var indicators = document.getElementById('viewIndicators');
+      if (indicators) {
+        var dots = indicators.getElementsByClassName('dot');
+        for (var i = 0; i < dots.length; i++) {
+          dots[i].classList.toggle('active', i === newIndex);
+        }
+      }
+    },
+
     handleTouchStart: function(event) {
       var panel = document.getElementById('settingsPanel');
       var edge = document.getElementById('settingsEdgeZone');
@@ -119,7 +152,11 @@
       var inEdge = touch.clientX >= edgeRect.left && touch.clientX <= edgeRect.right && touch.clientY >= edgeRect.top && touch.clientY <= edgeRect.bottom;
 
       if (!window.localDeviceState.settingsOpen) {
-        if (!inEdge) return;
+        if (!inEdge) {
+          // If not in edge, start a view swipe gesture
+          this.beginGesture('viewSwipe', touch);
+          return;
+        }
         this.syncSettingsDrawer(false, false);
         this.beginGesture('open', touch);
         return;
@@ -146,6 +183,14 @@
       
       var primary = (window.localDeviceState.orientation === 90 || window.localDeviceState.orientation === 270) ? Math.abs(dy) : Math.abs(dx);
       var secondary = (window.localDeviceState.orientation === 90 || window.localDeviceState.orientation === 270) ? Math.abs(dx) : Math.abs(dy);
+
+      if (this.settingsGesture.mode === 'viewSwipe') {
+        // For view swipe, we don't necessarily need to track movement visually, 
+        // but we might want to prevent default if it's mostly horizontal.
+        if (primary > secondary + 8) event.preventDefault();
+        return;
+      }
+
       if (secondary > primary + 8) return;
 
       var delta = dx; // Simplified for right-side drawer default
@@ -161,8 +206,32 @@
       event.preventDefault();
     },
 
-    finishGesture: function() {
+    finishGesture: function(event) {
       if (!this.settingsGesture.active) return;
+      
+      if (this.settingsGesture.mode === 'viewSwipe') {
+        var touch = event && event.changedTouches && event.changedTouches[0];
+        if (touch) {
+          var dx = touch.clientX - this.settingsGesture.startX;
+          var dy = touch.clientY - this.settingsGesture.startY;
+          var delta = dx;
+          if (window.localDeviceState.orientation === 90) delta = dy;
+          else if (window.localDeviceState.orientation === 180) delta = -dx;
+          else if (window.localDeviceState.orientation === 270) delta = -dy;
+
+          var swipeThreshold = 60;
+          if (delta < -swipeThreshold) {
+            // Swiped Left -> Move Right
+            this.switchView(window.localDeviceState.currentViewIndex + 1);
+          } else if (delta > swipeThreshold) {
+            // Swiped Right -> Move Left
+            this.switchView(window.localDeviceState.currentViewIndex - 1);
+          }
+        }
+        this.settingsGesture.active = false;
+        return;
+      }
+
       var size = this.settingsPanelSize();
       var shouldOpen = window.localDeviceState.settingsOffset < size * 0.45;
       this.syncSettingsDrawer(shouldOpen, true);
@@ -212,6 +281,16 @@
         return window.uiModule.renderItem(e.title || 'Event', e.detail || e.where || '', e.time || '');
       }).join('');
       document.getElementById('eventItems').innerHTML = eventHtml || '<div class="empty">No events today</div>';
+
+      // Update Full Calendar View
+      window.utils.setText('fullEventCount', events.length);
+      var fullEventHtml = events.map(function(e) {
+        return window.uiModule.renderItem(e.title || 'Event', e.detail || e.where || '', e.time || '');
+      }).join('');
+      var fullListEl = document.getElementById('fullEventItems');
+      if (fullListEl) {
+        fullListEl.innerHTML = fullEventHtml || '<div class="empty">Your agenda is clear for the week</div>';
+      }
 
       var musicBadgeEl = document.getElementById('musicBadge');
       if (musicBadgeEl) {

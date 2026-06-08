@@ -10,101 +10,222 @@
   </head>
   <body>
     <div class="shell" id="appShell">
-      <section class="top">
-        <article class="panel clock-panel">
-          <div>
-            <div class="kicker" id="greeting">Good day</div>
-            <div class="time"><span id="hour">--</span><span class="colon" id="colon">:</span><span id="minute">--</span></div>
-            <div class="date-line" id="dateLine">Loading date…</div>
-            <div class="weather-ish" id="statusLine">Kindle home • local dashboard</div>
+      <div id="view-container">
+        <!-- LEFT: Calendar View -->
+        <section id="view-calendar" class="view hidden">
+          <div class="calendar-layout">
+            <div class="panel card calendar-header">
+              <div class="card-head">
+                <h2>Upcoming Agenda</h2>
+                <span class="badge" id="fullEventCount">0</span>
+              </div>
+              <div class="subhead">Next 7 Days</div>
+            </div>
+            
+            <div class="calendar-list-container">
+              <div class="items" id="fullEventItems">
+                <div class="empty">Loading calendar...</div>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <div class="calendar-mini">
-            <div class="month-row">
+        <!-- CENTER: Dashboard View (Default) -->
+        <section id="view-dashboard" class="view active">
+          <section class="top">
+            <article class="panel clock-panel">
               <div>
-                <div class="kicker">Calendar</div>
-                <div class="month" id="monthName">Month</div>
+                <div class="kicker" id="greeting">Good day</div>
+                <div class="time"><span id="hour">--</span><span class="colon" id="colon">:</span><span id="minute">--</span></div>
+                <div class="date-line" id="dateLine">Loading date…</div>
+                <div class="weather-ish" id="statusLine">Kindle home • local dashboard</div>
               </div>
-              <div class="year" id="yearName">----</div>
-            </div>
-            <div class="days" id="days"></div>
-          </div>
-        </article>
-      </section>
 
-      <section class="bottom">
-        <article class="panel card">
-          <div class="card-head">
-            <h2>Devices</h2>
-          </div>
-          <div class="subhead">Tap to toggle</div>
-          <div class="items">
-            <button class="action-btn" onclick="toggleEntity('light.obl4ca5ea8b_1', this)">
-              Main Light
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
-            </button>
-            <button class="action-btn" onclick="toggleEntity('light.lampara', this)">
-              Lamp
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
-            </button>
-            <button class="action-btn" onclick="openSettings()">
-              Device Brightness
-              <span id="brightnessQuickValue">--</span>
-            </button>
-            <div class="action-btn status-btn">
-              Kindle Battery
-              <span id="deviceBatteryValue">--</span>
-            </div>
-          </div>
-        </article>
-
-        <div class="column-stack">
-          <article class="panel card">
-            <div class="card-head">
-              <h2>Mail</h2>
-              <span class="badge" id="mailCount" style="background: transparent; color: var(--dark); border: 2px solid var(--dark); padding: 0 6px;">0</span>
-            </div>
-            <div class="items" id="mailItems" style="margin-top: 4px;"></div>
-          </article>
-
-          <article class="panel card">
-            <div class="card-head">
-              <h2>Agenda</h2>
-              <span class="badge" id="eventCount">0</span>
-            </div>
-            <div class="items" id="eventItems" style="margin-top: 4px;"></div>
-          </article>
-        </div>
-
-        <div class="column-stack">
-          <article class="panel card">
-            <div class="card-head">
-              <h2>Music</h2>
-              <button class="badge" id="musicBadge">--</button>
-            </div>
-            <div class="subhead" id="musicSubhead">Waiting for PC player status</div>
-            <div class="items" id="musicItems"></div>
-          </article>
-
-          <article class="panel card">
-            <div class="card-head">
-              <h2>Connection</h2>
-            </div>
-            <div class="subhead">Home Assistant status</div>
-            <div class="items">
-              <div class="item">
-                <div class="item-main">
-                  <div class="item-title" id="connStatus">Disconnected</div>
-                  <div class="item-detail" id="connApiInfo">API Key: checking…</div>
+              <div class="calendar-mini">
+                <div class="month-row">
+                  <div>
+                    <div class="kicker">Calendar</div>
+                    <div class="month" id="monthName">Month</div>
+                  </div>
+                  <div class="year" id="yearName">----</div>
                 </div>
-                <div class="item-meta">
-                  <button class="badge" onclick="manualReconnectHass()" style="cursor: pointer; border: none; font-family: inherit;">Reconnect</button>
+                <div class="days" id="days"></div>
+              </div>
+            </article>
+          </section>
+
+          <section class="bottom">
+            <article class="panel card">
+              <div class="card-head">
+                <h2>Devices</h2>
+              </div>
+              <div class="subhead">Tap to toggle</div>
+              <div class="items">
+                <button class="action-btn" onclick="toggleEntity('light.obl4ca5ea8b_1', this)">
+                  Main Light
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                </button>
+                <button class="action-btn" onclick="toggleEntity('light.lampara', this)">
+                  Lamp
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                </button>
+                <button class="action-btn" onclick="openSettings()">
+                  Device Brightness
+                  <span id="brightnessQuickValue">--</span>
+                </button>
+                <div class="action-btn status-btn">
+                  Kindle Battery
+                  <span id="deviceBatteryValue">--</span>
                 </div>
               </div>
+            </article>
+
+            <div class="column-stack">
+              <article class="panel card">
+                <div class="card-head">
+                  <h2>Mail</h2>
+                  <span class="badge" id="mailCount" style="background: transparent; color: var(--dark); border: 2px solid var(--dark); padding: 0 6px;">0</span>
+                </div>
+                <div class="items" id="mailItems" style="margin-top: 4px;"></div>
+              </article>
+
+              <article class="panel card">
+                <div class="card-head">
+                  <h2>Agenda</h2>
+                  <span class="badge" id="eventCount">0</span>
+                </div>
+                <div class="items" id="eventItems" style="margin-top: 4px;"></div>
+              </article>
             </div>
-          </article>
-        </div>
-      </section>
+
+            <div class="column-stack">
+              <article class="panel card">
+                <div class="card-head">
+                  <h2>Music</h2>
+                  <button class="badge" id="musicBadge">--</button>
+                </div>
+                <div class="subhead" id="musicSubhead">Waiting for PC player status</div>
+                <div class="items" id="musicItems"></div>
+              </article>
+
+              <article class="panel card">
+                <div class="card-head">
+                  <h2>Connection</h2>
+                </div>
+                <div class="subhead">Home Assistant status</div>
+                <div class="items">
+                  <div class="item">
+                    <div class="item-main">
+                      <div class="item-title" id="connStatus">Disconnected</div>
+                      <div class="item-detail" id="connApiInfo">API Key: checking…</div>
+                    </div>
+                    <div class="item-meta">
+                      <button class="badge" onclick="manualReconnectHass()" style="cursor: pointer; border: none; font-family: inherit;">Reconnect</button>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </section>
+        </section>
+
+        <!-- RIGHT: PC Launcher View -->
+        <section id="view-launcher" class="view hidden">
+          <div class="launcher-layout">
+            <div class="panel card launcher-header">
+              <div class="card-head">
+                <h2>PC Launcher</h2>
+              </div>
+              <div class="subhead">Remote Macro Controls</div>
+            </div>
+            
+            <div class="launcher-grid">
+              <button class="macro-btn" onclick="executePcMacro('gaming_mode', this)">
+                <div class="macro-icon">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><circle cx="15" cy="13" r="1"></circle><circle cx="18" cy="11" r="1"></circle><path d="M6.7 5a9 9 0 0 1 10.6 0"></path><path d="M2 13a10 10 0 0 0 20 0"></path></svg>
+                </div>
+                <div class="macro-label" id="gamingModeLabel">Gaming Mode</div>
+              </button>
+              
+              <div class="media-control-panel">
+                <div class="now-playing">
+                  <div class="track-title" id="pcTrackTitle">Not Playing</div>
+                  <div class="track-artist" id="pcTrackArtist">PC Idle</div>
+                </div>
+                <div class="media-buttons">
+                  <button class="macro-btn mini" onclick="executePcMacro('prev_track', this)">
+                    <div class="macro-icon"><svg viewBox="0 0 24 24"><polygon points="19 20 9 12 19 4 19 20"></polygon><line x1="5" y1="19" x2="5" y2="5"></line></svg></div>
+                  </button>
+                  <button class="macro-btn" onclick="executePcMacro('play_pause', this)" id="pcPlayPauseBtn">
+                    <div class="macro-icon" id="pcPlayPauseIcon">
+                      <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    </div>
+                  </button>
+                  <button class="macro-btn mini" onclick="executePcMacro('next_track', this)">
+                    <div class="macro-icon"><svg viewBox="0 0 24 24"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" y1="5" x2="19" y2="19"></line></svg></div>
+                  </button>
+                </div>
+              </div>
+              
+              <button class="macro-btn" onclick="executePcMacro('mute_mic', this)">
+                <div class="macro-icon">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v1a7 7 0 0 1-14 0v-1"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
+                </div>
+                <div class="macro-label">Mute Mic</div>
+              </button>
+              
+              <div class="app-subgrid">
+                <button class="macro-btn mini" onclick="executePcMacro('launch_chrome', this)">
+                  <div class="macro-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="21.17" y1="8" x2="12" y2="8"></line><line x1="3.95" y1="6.06" x2="8.54" y2="14"></line><line x1="10.88" y1="21.94" x2="15.46" y2="14"></line></svg>
+                  </div>
+                  <div class="macro-label">Chromium</div>
+                </button>
+                <button class="macro-btn mini" onclick="executePcMacro('launch_mail', this)">
+                  <div class="macro-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                  </div>
+                  <div class="macro-label">Mail</div>
+                </button>
+              </div>
+              
+              <button class="macro-btn" onclick="executePcMacro('monitor_toggle', this)">
+                <div class="macro-icon">
+                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                </div>
+                <div class="macro-label" id="monitorToggleLabel">Monitors: ON</div>
+              </button>
+              
+              <div class="power-subgrid">
+                <button class="macro-btn mini" style="grid-column: span 2;" onclick="executePcMacro('sleep', this)">
+                  <div class="macro-icon">
+                    <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                  </div>
+                  <div class="macro-label">Sleep</div>
+                </button>
+                <button class="macro-btn mini" onclick="confirmPcMacro('restart', 'Restart PC?', this)">
+                  <div class="macro-icon">
+                    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>
+                  </div>
+                  <div class="macro-label">Restart</div>
+                </button>
+                <button class="macro-btn mini" onclick="confirmPcMacro('shutdown', 'Shut down PC?', this)">
+                  <div class="macro-icon">
+                    <svg viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+                  </div>
+                  <div class="macro-label">Shut Down</div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="view-indicators" id="viewIndicators">
+        <div class="dot"></div>
+        <div class="dot active"></div>
+        <div class="dot"></div>
+      </div>
 
       <div class="settings-edge-zone" id="settingsEdgeZone"></div>
 

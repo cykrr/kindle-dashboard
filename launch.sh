@@ -66,6 +66,7 @@ LD_LIBRARY_PATH="$CHROME_LIBS" /usr/bin/chromium/bin/kindle_browser \
   --no-sandbox \
   --single-process \
   --user-data-dir="$PROFILE_DIR" \
+  --remote-debugging-port=9222 \
   --disable-gpu \
   --content-shell-hide-toolbar \
   >"$DASHBOARD_DIR/browser.out" 2>&1 &
