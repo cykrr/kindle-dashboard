@@ -9,6 +9,7 @@ HASS_ENTITY="${HASS_ENTITY:-media_player.googlehome1844}"
 HASS_MAIL_ENTITY="${HASS_MAIL_ENTITY:-sensor.imap_me_messages}"
 HASS_MAIL_LABEL="${HASS_MAIL_LABEL:-Mail}"
 HASS_CALENDAR_ENTITIES="${HASS_CALENDAR_ENTITIES:-calendar.it,calendar.calendario}"
+HASS_BRIGHTNESS_ENTITY="${HASS_BRIGHTNESS_ENTITY:-}"
 OUT_FILE="${OUT_FILE:-hass-config.js}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
@@ -16,7 +17,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 2
 fi
 
-python3 - "$ENV_FILE" "$HASS_ENTITY" "$HASS_MAIL_ENTITY" "$HASS_CALENDAR_ENTITIES" "$OUT_FILE" <<'PY'
+python3 - "$ENV_FILE" "$HASS_ENTITY" "$HASS_MAIL_ENTITY" "$HASS_CALENDAR_ENTITIES" "$HASS_BRIGHTNESS_ENTITY" "$OUT_FILE" <<'PY'
 import json, shlex, sys
 from pathlib import Path
 
@@ -24,7 +25,8 @@ env_path = Path(sys.argv[1])
 entity = sys.argv[2]
 mail_entity = sys.argv[3]
 calendar_entities = sys.argv[4]
-out_path = Path(sys.argv[5])
+brightness_entity = sys.argv[5]
+out_path = Path(sys.argv[6])
 values = {}
 
 for raw in env_path.read_text().splitlines():
@@ -47,6 +49,7 @@ mail_entity = values.get('HASS_MAIL_ENTITY') or values.get('HA_MAIL_ENTITY') or 
 mail_label = values.get('HASS_MAIL_LABEL') or values.get('HA_MAIL_LABEL') or 'Mail'
 calendar_entities = values.get('HASS_CALENDAR_ENTITIES') or values.get('HA_CALENDAR_ENTITIES') or calendar_entities
 calendar_entities = [x.strip() for x in calendar_entities.split(',') if x.strip()]
+brightness_entity = values.get('HASS_BRIGHTNESS_ENTITY') or values.get('HA_BRIGHTNESS_ENTITY') or brightness_entity
 
 if not url or not token:
     print('Missing HASS_URL/HASS_TOKEN in .env', file=sys.stderr)
@@ -60,9 +63,10 @@ config = {
     'mailEntity': mail_entity,
     'mailLabel': mail_label,
     'calendarEntities': calendar_entities,
+    'brightnessEntity': brightness_entity,
 }
 out_path.write_text('window.HASS_CONFIG = ' + json.dumps(config, ensure_ascii=False, indent=2) + ';\n')
-print(f'wrote {out_path} for music={entity} mail={mail_entity} calendars={",".join(calendar_entities)} at {url.rstrip("/")}')
+print(f'wrote {out_path} for music={entity} mail={mail_entity} calendars={",".join(calendar_entities)} brightness={brightness_entity} at {url.rstrip("/")}')
 PY
 
 scp -P"$SSH_PORT" "$OUT_FILE" "$SSH_TARGET:$REMOTE_DIR/$OUT_FILE" >/dev/null

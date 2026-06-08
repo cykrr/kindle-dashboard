@@ -6,5 +6,6 @@ window.HASS_CONFIG = {
   "mailEntity": "sensor.imap_your_email",
   "calendarEntities": [
     "calendar.your_calendar"
-  ]
+  ],
+  "brightnessEntity": "input_number.kindle_brightness"
 };

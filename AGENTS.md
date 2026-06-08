@@ -30,7 +30,8 @@ Because the application consists of vanilla HTML, CSS, and JS, you can test UI e
 > When testing locally, calls to the Kindle settings API (`http://127.0.0.1:8177`) will fail. The app gracefully falls back to displaying orientation/battery as unavailable without crashing.
 
 ### 2. Config Setup
-Configuration for Home Assistant is derived from `.env`. Ensure your `.env` contains the required keys (e.g., `HASS_URL` and `HASS_TOKEN`).
+Configuration for Home Assistant is derived from `.env`. Ensure your `.env` contains the required keys (e.g., `HASS_URL`, `HASS_TOKEN`).
+You can optionally define `HASS_BRIGHTNESS_ENTITY` in your `.env` to enable two-way brightness synchronization between the Kindle device and Home Assistant.
 Run the helper script to compile and upload the HASS configuration:
 ```bash
 ./publish-hass-config.sh
