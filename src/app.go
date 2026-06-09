@@ -816,6 +816,9 @@ func (d *Dashboard) showView(idx int) {
 	if idx >= len(d.views) {
 		idx = len(d.views) - 1
 	}
+	// PC Macro: stop streaming when leaving the launcher view,
+	// start on demand when entering it.
+	prevIdx := d.currentView
 	for i, v := range d.views {
 		if i == idx {
 			C.w_show(v)
@@ -828,6 +831,15 @@ func (d *Dashboard) showView(idx int) {
 		}
 	}
 	d.currentView = idx
+
+	// Open the SSE stream on entering the launcher view, close it on leaving.
+	if pcMacroClient != nil {
+		if idx == 2 && prevIdx != 2 {
+			pcMacroClient.Touch()
+		} else if prevIdx == 2 && idx != 2 {
+			pcMacroClient.StopStreaming()
+		}
+	}
 }
 
 func (d *Dashboard) UpdateClock(now time.Time) {
