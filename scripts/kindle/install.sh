@@ -31,6 +31,6 @@ fi
 
 echo ""
 echo "=== Deploy complete ==="
-echo "Restarting dashboard in background..."
-ssh -p ${KINDLE_PORT} root@${KINDLE_IP} "DISPLAY=:0 ${DASHBOARD_DIR}/dashboard-native -hw-landscape > /tmp/dashboard.log 2>&1 &"
+echo "Restarting dashboard via launch.sh (keeps device awake)..."
+ssh -p ${KINDLE_PORT} root@${KINDLE_IP} "nohup ${DASHBOARD_DIR}/launch.sh > /tmp/launch.log 2>&1 &"
 echo "Dashboard restarted."

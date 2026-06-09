@@ -265,6 +265,35 @@ static void w_table_spacing(GtkWidget *t, guint rs, guint cs) {
 static void w_fg(GtkWidget *w, const char *c) {
 	GdkColor col; gdk_color_parse(c, &col);
 	gtk_widget_modify_fg(w, GTK_STATE_NORMAL, &col);
+	gtk_widget_modify_fg(w, GTK_STATE_ACTIVE, &col);
+	gtk_widget_modify_fg(w, GTK_STATE_PRELIGHT, &col);
+}
+static void w_bg_all(GtkWidget *w, const char *c) {
+	GdkColor col; gdk_color_parse(c, &col);
+	gtk_widget_modify_bg(w, GTK_STATE_NORMAL, &col);
+	gtk_widget_modify_bg(w, GTK_STATE_ACTIVE, &col);
+	gtk_widget_modify_bg(w, GTK_STATE_PRELIGHT, &col);
+}
+// Set label foreground for ALL states (NORMAL, ACTIVE, PRELIGHT) on the label
+// child of a button. The label widget has its own GtkStyle separate from the
+// button — setting just the button's fg doesn't propagate to it.
+static void w_set_btn_label_fg(GtkWidget *btn, const char *c) {
+	GtkWidget *child = gtk_bin_get_child(GTK_BIN(btn));
+	if (!child) return;
+	GdkColor col; gdk_color_parse(c, &col);
+	gtk_widget_modify_fg(child, GTK_STATE_NORMAL, &col);
+	gtk_widget_modify_fg(child, GTK_STATE_ACTIVE, &col);
+	gtk_widget_modify_fg(child, GTK_STATE_PRELIGHT, &col);
+}
+// Set ONLY the ACTIVE+PRELIGHT foreground on a button's label child to white.
+// This ensures the label text is always readable against the dark ACTIVE background.
+static void w_set_btn_label_fg_active_white(GtkWidget *btn) {
+	GtkWidget *child = gtk_bin_get_child(GTK_BIN(btn));
+	if (!child) return;
+	GdkColor col;
+	gdk_color_parse("#ffffff", &col);
+	gtk_widget_modify_fg(child, GTK_STATE_ACTIVE, &col);
+	gtk_widget_modify_fg(child, GTK_STATE_PRELIGHT, &col);
 }
 static void w_bg(GtkWidget *w, const char *c) {
 	GdkColor col; gdk_color_parse(c, &col);
@@ -1210,10 +1239,13 @@ func (d *Dashboard) UpdateLight(light LightData) {
 		on := strings.EqualFold(light.State, "on") || strings.EqualFold(light.State, "open")
 		if on {
 			C.w_btn_bg(btn, C.CString("#252525"))
-			setFG(btn, "#ffffff")
+			// Label text white in ALL states (NORMAL, ACTIVE, PRELIGHT)
+			C.w_set_btn_label_fg(btn, C.CString("#ffffff"))
 		} else {
 			C.w_btn_bg(btn, C.CString("#f0f0f0"))
-			setFG(btn, "#000000")
+			// Label text dark in NORMAL, but WHITE when pressed (ACTIVE/PRELIGHT)
+			C.w_set_btn_label_fg(btn, C.CString("#000000"))
+			C.w_set_btn_label_fg_active_white(btn)
 		}
 	})
 }
