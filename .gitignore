@@ -5,6 +5,7 @@ deploy/dashboard-native
 a.out
 *.o
 *.so
+macro-daemon.exe
 
 # Raw framebuffer dumps
 fb.raw
@@ -12,19 +13,30 @@ fb.raw
 # Screenshot dumps
 screenshot.xwd
 dash.xwd
+screenshot.png
+screenshot_*.png
 kindle_screenshot_*.png
 local_screenshot*.png
+img/
 
 # Temp files
 /tmp/
 info
 null
+*.xwd
+
+# Environment / secrets
+.env
+hass-config.js
 
 # Editor / OS junk
 .DS_Store
 *.swp
 *.swo
 *~
+.antigravitycli/
 
-# Config with secrets
-hass-config.js
+# Misc generated
+data.js
+test.c
+unban_public_ip
