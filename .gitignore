@@ -1,20 +1,30 @@
-.env
+# Build artifacts
+dashboard-local
+dashboard-native
+deploy/dashboard-native
+a.out
+*.o
+*.so
+
+# Raw framebuffer dumps
+fb.raw
+
+# Screenshot dumps
+screenshot.xwd
+dash.xwd
+kindle_screenshot_*.png
+local_screenshot*.png
+
+# Temp files
+/tmp/
+info
+null
+
+# Editor / OS junk
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Config with secrets
 hass-config.js
-unban_public_ip
-data.js
-*.png
-!screenshot.png
-/.antigravitycli
-
-# Go binaries
-macro-daemon.exe
-
-# Abandoned experiments
-/nowplaying/
-/null
-
-# Native build artifacts
-deploy/
-logs/
-sources/
-kindle-pkg-config
