@@ -32,10 +32,27 @@ func main() {
 		dash.SetConnectionStatus("Config Missing")
 	}
 
+	// Clock goroutine — sleeps precisely until the next minute boundary,
+	// waking the CPU only when the UI needs to reflect a new minute.
 	go func() {
 		for {
-			time.Sleep(1 * time.Second)
+			now := time.Now()
+			next := time.Date(now.Year(), now.Month(), now.Day(),
+				now.Hour(), now.Minute()+1, 0, 0, now.Location())
+			timer := time.NewTimer(time.Until(next))
+			<-timer.C
 			dash.UpdateClock(time.Now())
+		}
+	}()
+
+	// Battery polling goroutine — decoupled from the clock loop.
+	// Reads the sysfs capacity file every 5 minutes to minimise I/O.
+	go func() {
+		// Read immediately on startup, then every 5 minutes.
+		dash.UpdateBattery(readBatteryCapacity())
+		for {
+			time.Sleep(5 * time.Minute)
+			dash.UpdateBattery(readBatteryCapacity())
 		}
 	}()
 

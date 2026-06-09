@@ -875,9 +875,8 @@ func (d *Dashboard) updateClock(now time.Time) {
 	setMarkup(d.greeting, fmt.Sprintf("<span font_desc='%s' weight='bold' color='#626262'>%s</span>", greetingFont, greet))
 	setMarkup(d.clockLbl, fmt.Sprintf("<span font_desc='%s' weight='950'>%s</span>", clockFont, now.Format("15:04")))
 	setMarkup(d.dateLbl, fmt.Sprintf("<span font_desc='%s' weight='850'>%s</span>", dateFont, now.Format("Monday, January 2")))
-	if d.batteryCache == "" || now.Second()%30 == 0 {
-		d.batteryCache = readBatteryCapacity()
-	}
+	// Battery is now updated by the dedicated battery polling goroutine.
+	// d.batteryCache is set via dash.UpdateBattery() called from main.go.
 	setMarkup(d.statusLbl, fmt.Sprintf("<span font_desc='%s' color='#626262'>Bat %s%%</span>", statusFont, d.batteryCache))
 	setMarkup(d.calMonth, fmt.Sprintf("<span font_desc='%s' weight='950'>%s</span>", calMonthFont, months[mm]))
 	setMarkup(d.calYear, fmt.Sprintf("<span font_desc='%s' weight='bold' color='#626262'> %d</span>", calYearFont, ym))
@@ -1262,6 +1261,17 @@ func (d *Dashboard) BrightnessPercent(val int) int {
 		return 0
 	}
 	return (val*100 + d.brightnessMax/2) / d.brightnessMax
+}
+
+func (d *Dashboard) UpdateBattery(capacity string) {
+	d.runOnUI(func() {
+		d.batteryCache = capacity
+		statusFont := "10"
+		if d.options.HardwareLandscape {
+			statusFont = "9"
+		}
+		setMarkup(d.statusLbl, fmt.Sprintf("<span font_desc='%s' color='#626262'>Bat %s%%</span>", statusFont, d.batteryCache))
+	})
 }
 
 func (d *Dashboard) SetBrightnessPercent(percent int) {
