@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -274,6 +275,7 @@ func (h *HassClient) PublishBrightnessToHass(percent int) {
 }
 
 // RequestCalendarEvents fetches the next 7 days of calendar events.
+// Uses the proper REST calendar endpoint GET /api/calendars/<entity_id>.
 func (h *HassClient) RequestCalendarEvents(force bool) {
 	if len(h.cfg.CalendarEntities) == 0 {
 		return
@@ -281,42 +283,36 @@ func (h *HassClient) RequestCalendarEvents(force bool) {
 	start := time.Now()
 	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
 	end := start.AddDate(0, 0, 7)
-	payload := map[string]interface{}{
-		"entity_id":         h.cfg.CalendarEntities,
-		"start_date_time":   start.Format(time.RFC3339),
-		"end_date_time":     end.Format(time.RFC3339),
-		"return_response":   true,
-	}
-	body, err := h.restPost("/api/services/calendar/get_events", payload)
-	if err != nil {
-		log.Printf("hass: calendar events: %v", err)
-		return
-	}
 
-	// REST API returns an array of entity state objects, not the
-	// WebSocket-style map with a "response" key.  Each state object
-	// carries calendar events in attributes.events.
-	var states []map[string]interface{}
-	if err := json.Unmarshal(body, &states); err != nil {
-		log.Printf("hass: calendar decode: %v", err)
-		return
-	}
-
-	// Re-shape into the format parseCalendarData expects:
+	// Build the response map in the format parseCalendarData expects:
 	//   response[entityID] = {events: [...]}
 	response := make(map[string]interface{})
-	for _, st := range states {
-		eid, _ := st["entity_id"].(string)
-		if eid == "" {
+
+	for _, entityID := range h.cfg.CalendarEntities {
+		path := fmt.Sprintf("/api/calendars/%s?start=%s&end=%s",
+			url.QueryEscape(entityID),
+			url.QueryEscape(start.Format("2006-01-02T15:04:05Z")),
+			url.QueryEscape(end.Format("2006-01-02T23:59:59Z")),
+		)
+		body, err := h.restGet(path)
+		if err != nil {
+			log.Printf("hass: calendar %s: %v", entityID, err)
 			continue
 		}
-		attrs, _ := st["attributes"].(map[string]interface{})
-		if attrs == nil {
+
+		var events []interface{}
+		if err := json.Unmarshal(body, &events); err != nil {
+			log.Printf("hass: calendar decode %s: %v", entityID, err)
 			continue
 		}
-		response[eid] = map[string]interface{}{
-			"events": attrs["events"],
+		response[entityID] = map[string]interface{}{
+			"events": events,
 		}
+	}
+
+	if len(response) == 0 {
+		h.dash.UpdateAgenda(AgendaData{Summary: "No upcoming events"})
+		return
 	}
 
 	wrapped := map[string]interface{}{
