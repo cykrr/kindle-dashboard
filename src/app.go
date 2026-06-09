@@ -63,9 +63,10 @@ static void w_apply_button_style() {
         "style \"kindle-btn-toggle\" = \"kindle-btn\"\n"
         "{\n"
         "  engine \"flat\"\n"
-        "  font_name = \"sans 10 bold\"\n"
-        "  xthickness = 2\n"
-        "  ythickness = 2\n"
+        "  font_name = \"sans 11 bold\"\n"
+        "  xthickness = 8\n"
+        "  ythickness = 8\n"
+        "  GtkButton::inner-border = {8, 8, 8, 8}\n"
         "  bg[NORMAL] = {0.94, 0.94, 0.94}\n"
         "  bg[PRELIGHT] = {0.80, 0.80, 0.80}\n"
         "  bg[ACTIVE] = {0.22, 0.22, 0.22}\n"
@@ -751,15 +752,14 @@ func (d *Dashboard) buildDashboardView() *C.GtkWidget {
 	btm := C.w_hbox(0, 6)
 
 	// Devices
+	// Devices — two big square buttons, one per row
 	dc := frameCard("Devices")
-	vbd := C.w_vbox(0, 8)
-	C.w_border(vbd, 10)
-	sub := C.w_lbl()
-	C.w_markup(sub, C.CString("<span font_desc='10' color='#626262'>Tap to toggle</span>"))
-	C.w_align(sub, 0, 0.5)
-	C.w_pack(vbd, sub, 0, 0, 0)
+	numLights := len(d.options.HassLightEntities)
+	devGrid := C.w_table(C.int(numLights), 1)
+	C.w_table_spacing(devGrid, 8, 8)
+	C.w_border(devGrid, 8)
 
-	for _, entity := range d.options.HassLightEntities {
+	for i, entity := range d.options.HassLightEntities {
 		name := prettyEntityName(entity)
 		btnText := lightButtonLabel(name, "--")
 		cs := C.CString(btnText)
@@ -770,13 +770,12 @@ func (d *Dashboard) buildDashboardView() *C.GtkWidget {
 		es := C.CString(entity)
 		C.w_bind_toggle(btn, es)
 		C.free(unsafe.Pointer(es))
-		C.w_size(btn, -1, -1)
-		C.w_pack(vbd, btn, 0, 0, 0)
+		C.w_table_put(devGrid, btn, 0, 1, C.int(i), C.int(i+1))
 		d.hassLightButtons[entity] = btn
 		d.hassLightNames[entity] = name
 	}
 
-	C.w_add(dc, vbd)
+	C.w_add(dc, devGrid)
 	C.w_size(dc, 220, -1)
 	C.w_pack(btm, dc, 0, 1, 0)
 
@@ -1131,8 +1130,8 @@ func (d *Dashboard) updateNowPlayingFromPC(status PCStatus) {
 		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(stat)))
 		setMarkup(d.nowPlayingStatus, fmt.Sprintf("<span font_desc='8' color='#626262'>○</span>"))
 	} else {
-		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold'>%s</span>", esc(shorten(track, 25))))
-		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 20))))
+		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold'>%s</span>", esc(shorten(track, 60))))
+		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 50))))
 			badge := ">"
 		if strings.EqualFold(stat, "paused") {
 			badge = "|"
@@ -1166,8 +1165,8 @@ func (d *Dashboard) updateNowPlaying(m MusicData) {
 		if strings.EqualFold(m.State, "paused") {
 			badge = "|"
 		}
-		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold'>%s</span>", esc(shorten(track, 25))))
-		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 20))))
+		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold'>%s</span>", esc(shorten(track, 60))))
+		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 50))))
 		setMarkup(d.nowPlayingStatus, fmt.Sprintf("<span font_desc='8' weight='bold' color='#626262'>%s</span>", esc(badge)))
 	}
 }
@@ -1203,7 +1202,7 @@ func (d *Dashboard) UpdateLight(light LightData) {
 			setFG(btn, "#ffffff")
 		} else {
 			C.w_btn_bg(btn, C.CString("#f0f0f0"))
-			setFG(btn, "#626262")
+			setFG(btn, "#000000")
 		}
 	})
 }
@@ -1313,7 +1312,7 @@ func lightButtonLabel(name, state string) string {
 	if on {
 		return fmt.Sprintf("<span weight='bold'>● %s</span>", esc(name))
 	}
-	return fmt.Sprintf("<span color='#999999'>○ %s</span>", esc(name))
+	return fmt.Sprintf("<span>○ %s</span>", esc(name))
 }
 
 func esc(s string) string { return html.EscapeString(s) }
