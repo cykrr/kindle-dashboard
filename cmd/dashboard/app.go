@@ -35,10 +35,10 @@ static void w_apply_button_style() {
         "  ythickness = 2\n"
         "  font_name = \"sans bold 10\"\n"
         "  bg[NORMAL] = {0.95, 0.95, 0.95}\n"
-        "  bg[PRELIGHT] = {0.82, 0.82, 0.82}\n"
+        "  bg[PRELIGHT] = {0.95, 0.95, 0.95}\n"
         "  bg[ACTIVE] = {0.25, 0.25, 0.25}\n"
         "  fg[NORMAL] = {0.10, 0.10, 0.10}\n"
-        "  fg[PRELIGHT] = {0.05, 0.05, 0.05}\n"
+        "  fg[PRELIGHT] = {0.10, 0.10, 0.10}\n"
         "  fg[ACTIVE] = {1.0, 1.0, 1.0}\n"
         "}\n"
         "widget_class \"*<GtkButton>\" style \"kindle-btn\"\n"
@@ -51,10 +51,10 @@ static void w_apply_button_style() {
         "  ythickness = 2\n"
         "  font_name = \"sans 10 bold\"\n"
         "  bg[NORMAL] = {0.92, 0.92, 0.92}\n"
-        "  bg[PRELIGHT] = {0.78, 0.78, 0.78}\n"
+        "  bg[PRELIGHT] = {0.92, 0.92, 0.92}\n"
         "  bg[ACTIVE] = {0.20, 0.20, 0.20}\n"
         "  fg[NORMAL] = {0.08, 0.08, 0.08}\n"
-        "  fg[PRELIGHT] = {0.0, 0.0, 0.0}\n"
+        "  fg[PRELIGHT] = {0.08, 0.08, 0.08}\n"
         "  fg[ACTIVE] = {1.0, 1.0, 1.0}\n"
         "}\n"
         "widget \"*apply-btn*\" style \"kindle-btn-primary\"\n"
@@ -68,10 +68,10 @@ static void w_apply_button_style() {
         "  ythickness = 8\n"
         "  GtkButton::inner-border = {8, 8, 8, 8}\n"
         "  bg[NORMAL] = {0.94, 0.94, 0.94}\n"
-        "  bg[PRELIGHT] = {0.80, 0.80, 0.80}\n"
+        "  bg[PRELIGHT] = {0.94, 0.94, 0.94}\n"
         "  bg[ACTIVE] = {0.22, 0.22, 0.22}\n"
         "  fg[NORMAL] = {0.10, 0.10, 0.10}\n"
-        "  fg[PRELIGHT] = {0.0, 0.0, 0.0}\n"
+        "  fg[PRELIGHT] = {0.10, 0.10, 0.10}\n"
         "  fg[ACTIVE] = {1.0, 1.0, 1.0}\n"
         "}\n"
         "widget \"*toggle-btn*\" style \"kindle-btn-toggle\"\n"
@@ -285,7 +285,8 @@ static void w_set_btn_label_fg(GtkWidget *btn, const char *c) {
 	gtk_widget_modify_fg(child, GTK_STATE_ACTIVE, &col);
 	gtk_widget_modify_fg(child, GTK_STATE_PRELIGHT, &col);
 }
-// Set ONLY the ACTIVE+PRELIGHT foreground on a button's label child to white.
+// Set ONLY the ACTIVE foreground on a button's label child to white.
+// PRELIGHT (hover) intentionally omitted — no hover effect on e-ink.
 // This ensures the label text is always readable against the dark ACTIVE background.
 static void w_set_btn_label_fg_active_white(GtkWidget *btn) {
 	GtkWidget *child = gtk_bin_get_child(GTK_BIN(btn));
@@ -293,7 +294,6 @@ static void w_set_btn_label_fg_active_white(GtkWidget *btn) {
 	GdkColor col;
 	gdk_color_parse("#ffffff", &col);
 	gtk_widget_modify_fg(child, GTK_STATE_ACTIVE, &col);
-	gtk_widget_modify_fg(child, GTK_STATE_PRELIGHT, &col);
 }
 static void w_bg(GtkWidget *w, const char *c) {
 	GdkColor col; gdk_color_parse(c, &col);
@@ -302,6 +302,7 @@ static void w_bg(GtkWidget *w, const char *c) {
 static void w_btn_bg(GtkWidget *b, const char *c) {
 	GdkColor col; gdk_color_parse(c, &col);
 	gtk_widget_modify_bg(b, GTK_STATE_NORMAL, &col);
+	gtk_widget_modify_bg(b, GTK_STATE_PRELIGHT, &col);
 }
 static void w_btn_markup(GtkWidget *b, const char *m) {
 	GtkWidget *child = gtk_bin_get_child(GTK_BIN(b));
@@ -1239,11 +1240,11 @@ func (d *Dashboard) UpdateLight(light LightData) {
 		on := strings.EqualFold(light.State, "on") || strings.EqualFold(light.State, "open")
 		if on {
 			C.w_btn_bg(btn, C.CString("#252525"))
-			// Label text white in ALL states (NORMAL, ACTIVE, PRELIGHT)
+			// White text in all states (no hover effect)
 			C.w_set_btn_label_fg(btn, C.CString("#ffffff"))
 		} else {
 			C.w_btn_bg(btn, C.CString("#f0f0f0"))
-			// Label text dark in NORMAL, but WHITE when pressed (ACTIVE/PRELIGHT)
+			// Dark text normally, white only when pressed (ACTIVE)
 			C.w_set_btn_label_fg(btn, C.CString("#000000"))
 			C.w_set_btn_label_fg_active_white(btn)
 		}
