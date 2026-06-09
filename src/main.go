@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"strings"
@@ -50,16 +51,9 @@ func main() {
 		}
 	}()
 
-	// Battery polling goroutine — decoupled from the clock loop.
-	// Reads the sysfs capacity file every 5 minutes to minimise I/O.
-	go func() {
-		// Read immediately on startup, then every 5 minutes.
-		dash.UpdateBattery(readBatteryCapacity())
-		for {
-			time.Sleep(5 * time.Minute)
-			dash.UpdateBattery(readBatteryCapacity())
-		}
-	}()
+	// Battery event-driven updates — decoupled from the clock loop.
+	// Uses epoll/POLLPRI to wait for kernel sysfs_notify events.
+	go WatchBatteryCapacity(context.Background(), dash.UpdateBattery)
 
 	dash.Loop()
 }
