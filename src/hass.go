@@ -292,14 +292,35 @@ func (h *HassClient) RequestCalendarEvents(force bool) {
 		log.Printf("hass: calendar events: %v", err)
 		return
 	}
-	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
+
+	// REST API returns an array of entity state objects, not the
+	// WebSocket-style map with a "response" key.  Each state object
+	// carries calendar events in attributes.events.
+	var states []map[string]interface{}
+	if err := json.Unmarshal(body, &states); err != nil {
 		log.Printf("hass: calendar decode: %v", err)
 		return
 	}
-	// The REST API returns the full service response; wrap it for parsing.
+
+	// Re-shape into the format parseCalendarData expects:
+	//   response[entityID] = {events: [...]}
+	response := make(map[string]interface{})
+	for _, st := range states {
+		eid, _ := st["entity_id"].(string)
+		if eid == "" {
+			continue
+		}
+		attrs, _ := st["attributes"].(map[string]interface{})
+		if attrs == nil {
+			continue
+		}
+		response[eid] = map[string]interface{}{
+			"events": attrs["events"],
+		}
+	}
+
 	wrapped := map[string]interface{}{
-		"response": result["response"],
+		"response": response,
 	}
 	h.dash.UpdateAgenda(parseCalendarData(wrapped))
 }
