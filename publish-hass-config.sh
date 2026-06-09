@@ -9,6 +9,9 @@ HASS_ENTITY="${HASS_ENTITY:-media_player.googlehome1844}"
 HASS_MAIL_ENTITY="${HASS_MAIL_ENTITY:-sensor.imap_me_messages}"
 HASS_MAIL_LABEL="${HASS_MAIL_LABEL:-Mail}"
 HASS_CALENDAR_ENTITIES="${HASS_CALENDAR_ENTITIES:-calendar.it,calendar.calendario}"
+HASS_LIGHT_ENTITIES="${HASS_LIGHT_ENTITIES:-}"
+PC_MACRO_URL="${PC_MACRO_URL:-}"
+PC_MACRO_KEY="${PC_MACRO_KEY:-${MACRO_API_KEY:-}}"
 HASS_BRIGHTNESS_ENTITY="${HASS_BRIGHTNESS_ENTITY:-}"
 OUT_FILE="${OUT_FILE:-hass-config.js}"
 
@@ -17,7 +20,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 2
 fi
 
-python3 - "$ENV_FILE" "$HASS_ENTITY" "$HASS_MAIL_ENTITY" "$HASS_CALENDAR_ENTITIES" "$HASS_BRIGHTNESS_ENTITY" "$OUT_FILE" <<'PY'
+python3 - "$ENV_FILE" "$HASS_ENTITY" "$HASS_MAIL_ENTITY" "$HASS_CALENDAR_ENTITIES" "$HASS_LIGHT_ENTITIES" "$PC_MACRO_URL" "$PC_MACRO_KEY" "$HASS_BRIGHTNESS_ENTITY" "$OUT_FILE" <<'PY'
 import json, shlex, sys
 from pathlib import Path
 
@@ -25,8 +28,11 @@ env_path = Path(sys.argv[1])
 entity = sys.argv[2]
 mail_entity = sys.argv[3]
 calendar_entities = sys.argv[4]
-brightness_entity = sys.argv[5]
-out_path = Path(sys.argv[6])
+light_entities = sys.argv[5]
+pc_macro_url = sys.argv[6]
+pc_macro_key = sys.argv[7]
+brightness_entity = sys.argv[8]
+out_path = Path(sys.argv[9])
 values = {}
 
 for raw in env_path.read_text().splitlines():
@@ -49,6 +55,10 @@ mail_entity = values.get('HASS_MAIL_ENTITY') or values.get('HA_MAIL_ENTITY') or 
 mail_label = values.get('HASS_MAIL_LABEL') or values.get('HA_MAIL_LABEL') or 'Mail'
 calendar_entities = values.get('HASS_CALENDAR_ENTITIES') or values.get('HA_CALENDAR_ENTITIES') or calendar_entities
 calendar_entities = [x.strip() for x in calendar_entities.split(',') if x.strip()]
+light_entities = values.get('HASS_LIGHT_ENTITIES') or values.get('HA_LIGHT_ENTITIES') or light_entities
+light_entities = [x.strip() for x in light_entities.split(',') if x.strip()]
+pc_macro_url = values.get('PC_MACRO_URL') or values.get('MACRO_URL') or pc_macro_url
+pc_macro_key = values.get('PC_MACRO_KEY') or values.get('MACRO_API_KEY') or pc_macro_key
 brightness_entity = values.get('HASS_BRIGHTNESS_ENTITY') or values.get('HA_BRIGHTNESS_ENTITY') or brightness_entity
 
 if not url or not token:
@@ -63,10 +73,13 @@ config = {
     'mailEntity': mail_entity,
     'mailLabel': mail_label,
     'calendarEntities': calendar_entities,
+    'lightEntities': light_entities,
+    'pcMacroUrl': pc_macro_url,
+    'pcMacroKey': pc_macro_key,
     'brightnessEntity': brightness_entity,
 }
 out_path.write_text('window.HASS_CONFIG = ' + json.dumps(config, ensure_ascii=False, indent=2) + ';\n')
-print(f'wrote {out_path} for music={entity} mail={mail_entity} calendars={",".join(calendar_entities)} brightness={brightness_entity} at {url.rstrip("/")}')
+print(f'wrote {out_path} for music={entity} mail={mail_entity} calendars={",".join(calendar_entities)} lights={",".join(light_entities)} pc={pc_macro_url} brightness={brightness_entity} at {url.rstrip("/")}')
 PY
 
 scp -P"$SSH_PORT" "$OUT_FILE" "$SSH_TARGET:$REMOTE_DIR/$OUT_FILE" >/dev/null

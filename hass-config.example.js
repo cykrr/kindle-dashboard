@@ -7,5 +7,12 @@ window.HASS_CONFIG = {
   "calendarEntities": [
     "calendar.your_calendar"
   ],
-  "brightnessEntity": "input_number.kindle_brightness"
+  "lightEntities": [
+    "light.your_main_light",
+    "light.your_lamp"
+  ],
+  "pcMacroUrl": "http://10.20.0.2:8080",
+  "pcMacroKey": "your-super-secret-key",
+  "brightnessEntity": "input_number.kindle_brightness",
+  "insecureSkipVerify": false
 };

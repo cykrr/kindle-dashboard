@@ -1,10 +1,24 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
+
+func setPowerMode(mode string) error {
+	return runPowerShell(false, `& "C:\Users\krr\bin\toggle-mode.ps1" -mode `+mode)
+}
+
+func togglePowerMode() error {
+	mode := getActivePowerScheme()
+	if mode == "power" {
+		return setPowerMode("save")
+	}
+	return setPowerMode("power")
+}
 
 // executeAction runs the named action and returns an error if it fails.
 func executeAction(action string) error {
@@ -20,13 +34,60 @@ func executeAction(action string) error {
 	case "sleep":
 		return runPowerShell(true, `Add-Type -Assembly System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)`)
 	case "gaming_mode":
-		return runPowerShell(false, `& "C:\Users\krr\bin\toggle-mode.ps1" -mode power`)
+		return togglePowerMode()
+	case "power_mode":
+		return setPowerMode("power")
+	case "save_mode":
+		return setPowerMode("save")
 	case "screenshot":
 		return runPowerShell(false, `(New-Object -ComObject WScript.Shell).SendKeys([char]44)`)
 	case "launch_chrome":
-		return runPowerShell(false, `Start-Process "chrome.exe"`)
+		return runPowerShell(false, `
+$exe = 'chrome.exe'
+$name = 'chrome'
+$hwnd = (Get-Process $name -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }).MainWindowHandle
+if ($hwnd) {
+    $sig = @'
+[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+'@
+    $win32 = Add-Type -MemberDefinition $sig -Name Win32Toggle -Namespace Win32Functions -PassThru
+    if ($win32::IsIconic($hwnd)) {
+        $win32::ShowWindowAsync($hwnd, 9)
+        $win32::SetForegroundWindow($hwnd)
+    } else {
+        $win32::ShowWindowAsync($hwnd, 6)
+    }
+} else {
+    Start-Process $exe
+}
+`)
 	case "launch_mail":
-		return runPowerShell(false, `Start-Process "mailto:"`)
+		return runPowerShell(false, `
+$exe = 'C:\Users\krr\scoop\apps\thunderbird\current\thunderbird.exe'
+$name = 'thunderbird'
+$hwnd = (Get-Process $name -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 }).MainWindowHandle
+if ($hwnd) {
+    $sig = @'
+[DllImport("user32.dll")] public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
+[DllImport("user32.dll")] public static extern bool IsIconic(IntPtr hWnd);
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+'@
+    $win32 = Add-Type -MemberDefinition $sig -Name Win32Toggle -Namespace Win32Functions -PassThru
+    if ($win32::IsIconic($hwnd)) {
+        $win32::ShowWindowAsync($hwnd, 9)
+        $win32::SetForegroundWindow($hwnd)
+    } else {
+        $win32::ShowWindowAsync($hwnd, 6)
+    }
+} else {
+    Start-Process $exe
+}
+`)
+	case "launch_fortnite":
+		// Invoke-Item opens with the default handler (Epic Games Launcher / browser)
+		return runPowerShell(false, `Invoke-Item "C:\Users\krr\Desktop\Fortnite.url"`)
 	case "monitor_toggle":
 		return runPowerShell(false, `& "C:\Users\krr\bin\toggle-monitor.ps1"`)
 	case "restart":
@@ -53,6 +114,37 @@ func isUnknownAction(err error) bool {
 	return ok
 }
 
+// notifyWindows sends a Windows balloon-tip notification.
+// Uses PowerShell's NotifyIcon so it works from any context (hidden, GUI, etc.).
+func notifyWindows(title, message, iconType string) {
+	switch iconType {
+	case "error":
+		iconType = "Error"
+	case "warning":
+		iconType = "Warning"
+	default:
+		iconType = "Info"
+	}
+	_ = runPowerShell(false, fmt.Sprintf(`
+Add-Type -AssemblyName System.Windows.Forms
+$n = New-Object System.Windows.Forms.NotifyIcon
+$n.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon('C:\Program Files\KindleDashboard\macro-daemon.exe')
+$n.BalloonTipTitle = '%s'
+$n.BalloonTipText = '%s'
+$n.BalloonTipIcon = '%s'
+$n.Visible = $true
+$n.ShowBalloonTip(5000)
+Start-Sleep 6
+$n.Dispose()
+`, psEscape(title), psEscape(message), iconType))
+}
+
+// psEscape escapes a string for safe embedding in a PowerShell single-quoted string.
+// Single quotes are doubled; dollar signs and backticks are literal inside single quotes.
+func psEscape(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
+}
+
 // handleExecute handles POST /execute requests.
 func handleExecute(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -74,10 +166,12 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 	err := executeAction(action)
 	if err != nil {
 		if isUnknownAction(err) {
+			notifyWindows("Kindle Macro", "Unknown action: "+action, "warning")
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		log.Printf("Action %s failed: %v", action, err)
+		notifyWindows("Kindle Macro: Action Failed", action+": "+err.Error(), "error")
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Kindle device body -->
+  <rect x="6" y="2" width="52" height="60" rx="6" ry="6" fill="#252525" stroke="#111" stroke-width="1"/>
+  <!-- Screen -->
+  <rect x="10" y="7" width="44" height="44" rx="2" ry="2" fill="#f5f0e8"/>
+  <!-- Text lines on screen (representing book text) -->
+  <rect x="14" y="12" width="22" height="2" rx="1" fill="#c8c0b0"/>
+  <rect x="14" y="17" width="30" height="2" rx="1" fill="#c8c0b0"/>
+  <rect x="14" y="22" width="26" height="2" rx="1" fill="#c8c0b0"/>
+  <rect x="14" y="27" width="28" height="2" rx="1" fill="#c8c0b0"/>
+  <rect x="14" y="32" width="24" height="2" rx="1" fill="#c8c0b0"/>
+  <rect x="14" y="37" width="20" height="2" rx="1" fill="#c8c0b0"/>
+  <!-- Page indicator dot -->
+  <circle cx="48" cy="14" r="1.5" fill="#252525"/>
+  <!-- Bottom bezel / chin -->
+  <rect x="10" y="53" width="44" height="5" rx="1" fill="#1a1a1a"/>
+  <!-- Home button dot -->
+  <circle cx="32" cy="55.5" r="1.5" fill="#444"/>
+</svg>

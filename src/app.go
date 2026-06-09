@@ -1,8 +1,7 @@
 package main
 
 /*
-#cgo LDFLAGS: -lgtk-x11-2.0 -lgdk-x11-2.0 -lgdk_pixbuf-2.0 -lpangocairo-1.0 -lpango-1.0 -lcairo -latk-1.0 -lgio-2.0 -lgobject-2.0 -lglib-2.0 -lX11 -lXext -lXrender
-#cgo CFLAGS:
+#cgo pkg-config: gtk+-2.0 x11
 
 #include <gtk/gtk.h>
 #include <gdk/gdk.h>
@@ -13,10 +12,175 @@ package main
 
 extern void onApplyBrightness();
 extern void onQuitClicked();
+extern void onSwipeStart(double x, double y);
+extern void onSwipeEnd(double x, double y);
+extern void onToggleEntityClicked(char *entity);
+extern void onMacroActionClicked(char *action);
+extern void processUIQueue();
+
+// Style engine
+// Apply a tailored RC style for buttons on e-ink displays
+static void w_apply_button_style() {
+    gtk_rc_parse_string(
+        // ── Base button style ──
+        // White/near-white bg by default, dark bg when pressed — e-ink friendly.
+        // Uses flat engine for boxy (non-rounded) corners.
+        "style \"kindle-btn\"\n"
+        "{\n"
+        "  engine \"flat\"\n"
+        "  GtkButton::inner-border = {4, 4, 6, 6}\n"
+        "  GtkButton::child-displacement-x = 0\n"
+        "  GtkButton::child-displacement-y = 0\n"
+        "  xthickness = 2\n"
+        "  ythickness = 2\n"
+        "  font_name = \"sans bold 10\"\n"
+        "  bg[NORMAL] = {0.95, 0.95, 0.95}\n"
+        "  bg[PRELIGHT] = {0.82, 0.82, 0.82}\n"
+        "  bg[ACTIVE] = {0.25, 0.25, 0.25}\n"
+        "  fg[NORMAL] = {0.10, 0.10, 0.10}\n"
+        "  fg[PRELIGHT] = {0.05, 0.05, 0.05}\n"
+        "  fg[ACTIVE] = {1.0, 1.0, 1.0}\n"
+        "}\n"
+        "widget_class \"*<GtkButton>\" style \"kindle-btn\"\n"
+        "\n"
+        // ── Primary action buttons (Apply, media transport) ──
+        "style \"kindle-btn-primary\" = \"kindle-btn\"\n"
+        "{\n"
+        "  engine \"flat\"\n"
+        "  xthickness = 2\n"
+        "  ythickness = 2\n"
+        "  font_name = \"sans 10 bold\"\n"
+        "  bg[NORMAL] = {0.92, 0.92, 0.92}\n"
+        "  bg[PRELIGHT] = {0.78, 0.78, 0.78}\n"
+        "  bg[ACTIVE] = {0.20, 0.20, 0.20}\n"
+        "  fg[NORMAL] = {0.08, 0.08, 0.08}\n"
+        "  fg[PRELIGHT] = {0.0, 0.0, 0.0}\n"
+        "  fg[ACTIVE] = {1.0, 1.0, 1.0}\n"
+        "}\n"
+        "widget \"*apply-btn*\" style \"kindle-btn-primary\"\n"
+        "widget \"*media-btn*\" style \"kindle-btn-primary\"\n"
+        // ── Toggle (light entity) buttons ──
+        "style \"kindle-btn-toggle\" = \"kindle-btn\"\n"
+        "{\n"
+        "  engine \"flat\"\n"
+        "  font_name = \"sans 10 bold\"\n"
+        "  xthickness = 2\n"
+        "  ythickness = 2\n"
+        "  bg[NORMAL] = {0.94, 0.94, 0.94}\n"
+        "  bg[PRELIGHT] = {0.80, 0.80, 0.80}\n"
+        "  bg[ACTIVE] = {0.22, 0.22, 0.22}\n"
+        "  fg[NORMAL] = {0.10, 0.10, 0.10}\n"
+        "  fg[PRELIGHT] = {0.0, 0.0, 0.0}\n"
+        "  fg[ACTIVE] = {1.0, 1.0, 1.0}\n"
+        "}\n"
+        "widget \"*toggle-btn*\" style \"kindle-btn-toggle\"\n"
+        "\n"
+        // ── Frame / card style ──
+        "style \"kindle-frame\"\n"
+        "{\n"
+        "  GtkFrame::border-width = 2\n"
+        "  xthickness = 2\n"
+        "  ythickness = 2\n"
+        "  bg[NORMAL] = {0.92, 0.92, 0.92}\n"
+        "  fg[NORMAL] = {0.15, 0.15, 0.15}\n"
+        "}\n"
+        "widget_class \"*<GtkFrame>\" style \"kindle-frame\"\n"
+    );
+}
+
+// ── Icon renderer ──
+// Draws a simple 24×24 icon for a macro button using Cairo onto a surface,
+// then converts to GdkPixbuf via raw data copy.
+// Returns a GtkImage widget ready to pass to gtk_button_set_image().
+static GtkWidget* w_make_icon(const char *name) {
+    const int S = 24;
+    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, S, S);
+    cairo_t *cr = cairo_create(surf);
+
+    // Clear to transparent
+    cairo_set_source_rgba(cr, 0, 0, 0, 0);
+    cairo_paint(cr);
+
+    // Ink colour — dark for e-ink contrast
+    cairo_set_source_rgb(cr, 0.08, 0.08, 0.08);
+    cairo_set_line_width(cr, 2.0);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+    // ── Draw icon shapes ──
+    if (strcmp(name, "prev_track") == 0) {
+        cairo_move_to(cr, 18, 5); cairo_line_to(cr, 8, 12); cairo_line_to(cr, 18, 19); cairo_close_path(cr); cairo_fill(cr);
+        cairo_rectangle(cr, 5, 4, 2, 16); cairo_fill(cr);
+    } else if (strcmp(name, "play_pause") == 0) {
+        cairo_move_to(cr, 7, 4); cairo_line_to(cr, 19, 12); cairo_line_to(cr, 7, 20); cairo_close_path(cr); cairo_fill(cr);
+    } else if (strcmp(name, "pause") == 0 || strcmp(name, "paused") == 0) {
+        cairo_rectangle(cr, 6, 4, 4, 16); cairo_fill(cr);
+        cairo_rectangle(cr, 14, 4, 4, 16); cairo_fill(cr);
+    } else if (strcmp(name, "next_track") == 0) {
+        cairo_move_to(cr, 6, 5); cairo_line_to(cr, 16, 12); cairo_line_to(cr, 6, 19); cairo_close_path(cr); cairo_fill(cr);
+        cairo_rectangle(cr, 17, 4, 2, 16); cairo_fill(cr);
+    } else if (strcmp(name, "mute_mic") == 0) {
+        cairo_rectangle(cr, 8, 4, 6, 8); cairo_stroke(cr);
+        cairo_move_to(cr, 11, 12); cairo_line_to(cr, 11, 17); cairo_stroke(cr);
+        cairo_arc(cr, 11, 17, 4, 3.1416, 0); cairo_stroke(cr);
+        cairo_move_to(cr, 4, 4); cairo_line_to(cr, 18, 20); cairo_stroke(cr);
+    } else if (strcmp(name, "monitor_toggle") == 0) {
+        cairo_rectangle(cr, 3, 3, 18, 12); cairo_stroke(cr);
+        cairo_move_to(cr, 8, 17); cairo_line_to(cr, 16, 17); cairo_stroke(cr);
+        cairo_move_to(cr, 12, 15); cairo_line_to(cr, 12, 17); cairo_stroke(cr);
+    } else if (strcmp(name, "pc_mode_toggle") == 0) {
+        cairo_arc(cr, 12, 12, 7, 0, 6.2832); cairo_move_to(cr, 10, 12); cairo_line_to(cr, 10, 14); cairo_move_to(cr, 9, 13); cairo_line_to(cr, 11, 13); cairo_stroke(cr);
+        cairo_arc(cr, 16, 10, 1.5, 0, 6.2832); cairo_fill(cr);
+        cairo_arc(cr, 17, 14, 1.5, 0, 6.2832); cairo_fill(cr);
+    } else if (strcmp(name, "launch_chrome") == 0) {
+        cairo_arc(cr, 12, 12, 9, 0, 6.2832); cairo_stroke(cr);
+        cairo_arc(cr, 12, 12, 4, 0, 6.2832); cairo_stroke(cr);
+        cairo_move_to(cr, 3, 12); cairo_line_to(cr, 21, 12); cairo_stroke(cr);
+        cairo_move_to(cr, 12, 3); cairo_line_to(cr, 12, 21); cairo_stroke(cr);
+    } else if (strcmp(name, "launch_mail") == 0) {
+        cairo_rectangle(cr, 2, 5, 20, 14); cairo_stroke(cr);
+        cairo_move_to(cr, 2, 6); cairo_line_to(cr, 12, 14); cairo_line_to(cr, 22, 6); cairo_stroke(cr);
+    } else if (strcmp(name, "sleep") == 0) {
+        cairo_arc(cr, 14, 12, 8, 0, 6.2832); cairo_stroke(cr);
+        cairo_arc(cr, 10, 9, 6, -1.2, 1.2); cairo_fill(cr);
+    } else if (strcmp(name, "restart") == 0) {
+        cairo_arc(cr, 12, 12, 8, 0.5, 5.8); cairo_stroke(cr);
+        cairo_move_to(cr, 15, 6); cairo_line_to(cr, 20, 8); cairo_line_to(cr, 18, 13); cairo_stroke(cr);
+    } else if (strcmp(name, "shutdown") == 0) {
+        cairo_arc(cr, 12, 12, 8, 0.8, 5.5); cairo_stroke(cr);
+        cairo_move_to(cr, 12, 3); cairo_line_to(cr, 12, 13); cairo_stroke(cr);
+    } else if (strcmp(name, "launch_fortnite") == 0) {
+        cairo_arc(cr, 12, 12, 9, 0, 6.2832); cairo_stroke(cr);
+        cairo_arc(cr, 12, 12, 3, 0, 6.2832); cairo_stroke(cr);
+        cairo_move_to(cr, 12, 1); cairo_line_to(cr, 12, 5); cairo_stroke(cr);
+        cairo_move_to(cr, 12, 19); cairo_line_to(cr, 12, 23); cairo_stroke(cr);
+        cairo_move_to(cr, 1, 12); cairo_line_to(cr, 5, 12); cairo_stroke(cr);
+        cairo_move_to(cr, 19, 12); cairo_line_to(cr, 23, 12); cairo_stroke(cr);
+    } else {
+        cairo_arc(cr, 12, 12, 8, 0, 6.2832); cairo_stroke(cr);
+        cairo_arc(cr, 12, 12, 2, 0, 6.2832); cairo_fill(cr);
+    }
+
+    cairo_destroy(cr);
+
+    // Convert surface to GdkPixbuf
+    int stride = cairo_image_surface_get_stride(surf);
+    unsigned char *pixels = cairo_image_surface_get_data(surf);
+    GdkPixbuf *pb = gdk_pixbuf_new_from_data(pixels, GDK_COLORSPACE_RGB, TRUE, 8, S, S, stride, NULL, NULL);
+    if (!pb) { cairo_surface_destroy(surf); return gtk_image_new_from_stock(GTK_STOCK_MEDIA_PLAY, GTK_ICON_SIZE_BUTTON); }
+    // Copy so we can destroy the surface
+    GdkPixbuf *copy = gdk_pixbuf_copy(pb);
+    g_object_unref(pb);
+    cairo_surface_destroy(surf);
+
+    GtkWidget *img = gtk_image_new_from_pixbuf(copy);
+    g_object_unref(copy);
+    return img;
+}
 
 // Widget factories
 // Call this before any GTK/GLib usage for GTK 2.10 compat
-static void w_init() { g_type_init(); }
+static void w_init() { g_type_init(); w_apply_button_style(); }
 
 static GtkWidget* w_win(gboolean hw_landscape) {
 	GtkWidget *w = gtk_window_new(GTK_WINDOW_TOPLEVEL);
@@ -50,9 +214,21 @@ static GtkWidget* w_hbox(gboolean h, gint s) { return gtk_hbox_new(h, s); }
 static GtkWidget* w_frame(const char *l)     { return gtk_frame_new(l); }
 static GtkWidget* w_lbl()                    { GtkWidget *l = gtk_label_new(NULL); return l; }
 static GtkWidget* w_btn(const char *t)       { return gtk_button_new_with_label(t); }
+static GtkWidget* w_btn_named(const char *t, const char *n) {
+    GtkWidget *b = gtk_button_new_with_label(t);
+    gtk_widget_set_name(b, n);
+    return b;
+}
+static void w_btn_set_icon(GtkWidget *btn, const char *icon) {
+    GtkWidget *img = w_make_icon(icon);
+    gtk_button_set_image(GTK_BUTTON(btn), img);
+}
+static void w_btn_text(GtkWidget *b, const char *t) { gtk_button_set_label(GTK_BUTTON(b), t); }
 static GtkWidget* w_hscale(double min, double max, double step) {
-	GtkObject *a = gtk_adjustment_new(min, min, max, step, step*10, 0);
-	return gtk_hscale_new(GTK_ADJUSTMENT(a));
+	GtkAdjustment *a = (GtkAdjustment*)gtk_adjustment_new(min, min, max, step, step*10, 0);
+	GtkWidget *s = gtk_hscale_new(GTK_ADJUSTMENT(a));
+	gtk_scale_set_draw_value(GTK_SCALE(s), FALSE);
+	return s;
 }
 static GtkWidget* w_table(gint r, gint c) {
 	GtkWidget *t = gtk_table_new(r, c, TRUE);
@@ -78,6 +254,9 @@ static void w_shadow(GtkWidget *w, GtkShadowType s) { gtk_frame_set_shadow_type(
 static void w_table_put(GtkWidget *t, GtkWidget *w, gint l, gint r, gint tp, gint bt) {
 	gtk_table_attach(GTK_TABLE(t), w, l, r, tp, bt, GTK_EXPAND|GTK_FILL, GTK_EXPAND|GTK_FILL, 0, 0);
 }
+static void w_table_put_center(GtkWidget *t, GtkWidget *w, gint l, gint r, gint tp, gint bt) {
+	gtk_table_attach(GTK_TABLE(t), w, l, r, tp, bt, GTK_EXPAND, GTK_EXPAND, 0, 0);
+}
 static void w_table_spacing(GtkWidget *t, guint rs, guint cs) {
 	gtk_table_set_row_spacings(GTK_TABLE(t), rs);
 	gtk_table_set_col_spacings(GTK_TABLE(t), cs);
@@ -90,13 +269,79 @@ static void w_bg(GtkWidget *w, const char *c) {
 	GdkColor col; gdk_color_parse(c, &col);
 	gtk_widget_modify_bg(w, GTK_STATE_NORMAL, &col);
 }
+static void w_btn_bg(GtkWidget *b, const char *c) {
+	GdkColor col; gdk_color_parse(c, &col);
+	gtk_widget_modify_bg(b, GTK_STATE_NORMAL, &col);
+}
+static void w_btn_markup(GtkWidget *b, const char *m) {
+	GtkWidget *child = gtk_bin_get_child(GTK_BIN(b));
+	if (child && GTK_IS_LABEL(child)) gtk_label_set_markup(GTK_LABEL(child), m);
+}
+static void w_wrap(GtkWidget *l) { gtk_label_set_line_wrap(GTK_LABEL(l), TRUE); }
 static double w_scale_get(GtkWidget *s) { return gtk_range_get_value(GTK_RANGE(s)); }
+static void w_scale_set(GtkWidget *s, double v) { gtk_range_set_value(GTK_RANGE(s), v); }
 static void w_signal(GtkWidget *w, const char *s, GCallback cb) {
 	g_signal_connect(G_OBJECT(w), s, cb, NULL);
 }
 static void w_show(GtkWidget *w)   { gtk_widget_show(w); }
 static void w_hide(GtkWidget *w)   { gtk_widget_hide(w); }
 static void w_show_all(GtkWidget *w) { gtk_widget_show_all(w); }
+
+static gboolean w_is_swipe_target(GdkEventButton *event) {
+	GtkWidget *target = gtk_get_event_widget((GdkEvent*)event);
+	if (!target) return TRUE;
+	if (GTK_IS_BUTTON(target) || GTK_IS_RANGE(target)) return FALSE;
+	if (gtk_widget_get_ancestor(target, GTK_TYPE_BUTTON) != NULL) return FALSE;
+	if (gtk_widget_get_ancestor(target, GTK_TYPE_RANGE) != NULL) return FALSE;
+	return TRUE;
+}
+
+static gboolean w_on_button_press(GtkWidget *widget, GdkEventButton *event, gpointer data) {
+	if (!event || event->button != 1 || !w_is_swipe_target(event)) return FALSE;
+	onSwipeStart(event->x_root, event->y_root);
+	return FALSE;
+}
+
+static gboolean w_on_button_release(GtkWidget *widget, GdkEventButton *event, gpointer data) {
+	if (!event || event->button != 1) return FALSE;
+	onSwipeEnd(event->x_root, event->y_root);
+	return FALSE;
+}
+
+static void w_enable_swipe(GtkWidget *w) {
+	gtk_widget_add_events(w, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+	g_signal_connect(G_OBJECT(w), "button-press-event", G_CALLBACK(w_on_button_press), NULL);
+	g_signal_connect(G_OBJECT(w), "button-release-event", G_CALLBACK(w_on_button_release), NULL);
+}
+
+static void w_on_toggle_entity(GtkWidget *widget, gpointer data) {
+	if (!data) return;
+	onToggleEntityClicked((char*)data);
+}
+
+static void w_bind_toggle(GtkWidget *w, const char *entity) {
+	char *copy = g_strdup(entity);
+	g_signal_connect_data(G_OBJECT(w), "clicked", G_CALLBACK(w_on_toggle_entity), copy, (GClosureNotify)g_free, 0);
+}
+
+static void w_on_macro_action(GtkWidget *widget, gpointer data) {
+	if (!data) return;
+	onMacroActionClicked((char*)data);
+}
+
+static void w_bind_macro(GtkWidget *w, const char *action) {
+	char *copy = g_strdup(action);
+	g_signal_connect_data(G_OBJECT(w), "clicked", G_CALLBACK(w_on_macro_action), copy, (GClosureNotify)g_free, 0);
+}
+
+static gboolean w_ui_idle(gpointer data) {
+	processUIQueue();
+	return FALSE;
+}
+
+static void w_queue_ui_dispatch(void) {
+	g_idle_add(w_ui_idle, NULL);
+}
 
 // Override-redirect to bypass Kindle window manager
 static void w_override(void) {
@@ -127,18 +372,72 @@ static void w_override(void) {
 import "C"
 import (
 	"fmt"
+	"html"
+	"strings"
+	"sync"
 	"time"
 	"unsafe"
 )
 
+// Button name constants for RC style targeting
+const (
+	btnNameMedia  = "media-btn"
+	btnNameApply  = "apply-btn"
+	btnNameToggle = "toggle-btn"
+)
+
 // ─── State ───
 var dash *Dashboard
+var hassClient *HassClient
+var pcMacroClient *PCMacroClient
+var uiQueue struct {
+	mu        sync.Mutex
+	items     []func()
+	scheduled bool
+}
+
+func enqueueUI(fn func()) {
+	uiQueue.mu.Lock()
+	uiQueue.items = append(uiQueue.items, fn)
+	if uiQueue.scheduled {
+		uiQueue.mu.Unlock()
+		return
+	}
+	uiQueue.scheduled = true
+	uiQueue.mu.Unlock()
+	C.w_queue_ui_dispatch()
+}
+
+//export processUIQueue
+func processUIQueue() {
+	for {
+		uiQueue.mu.Lock()
+		if len(uiQueue.items) == 0 {
+			uiQueue.scheduled = false
+			uiQueue.mu.Unlock()
+			return
+		}
+		items := uiQueue.items
+		uiQueue.items = nil
+		uiQueue.mu.Unlock()
+		for _, fn := range items {
+			fn()
+		}
+	}
+}
 
 func boolToInt(v bool) int {
 	if v {
 		return 1
 	}
 	return 0
+}
+
+func absf(v float64) float64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
 
 //export onApplyBrightness
@@ -148,14 +447,64 @@ func onApplyBrightness() {
 	}
 	val := int(C.w_scale_get(dash.brightnessScale))
 	writeBrightness(val)
+	dash.UpdateBrightnessValue(val)
+	if hassClient != nil {
+		hassClient.PublishBrightnessToHass(dash.BrightnessPercent(val))
+	}
 }
 
 //export onQuitClicked
 func onQuitClicked() { C.gtk_main_quit() }
 
+//export onSwipeStart
+func onSwipeStart(x, y C.double) {
+	if dash == nil {
+		return
+	}
+	dash.swipeStartX = float64(x)
+	dash.swipeStartY = float64(y)
+	dash.swipeActive = true
+}
+
+//export onSwipeEnd
+func onSwipeEnd(x, y C.double) {
+	if dash == nil || !dash.swipeActive {
+		return
+	}
+	dash.swipeActive = false
+	dx := float64(x) - dash.swipeStartX
+	dy := float64(y) - dash.swipeStartY
+	if absf(dx) < 90 || absf(dx) < absf(dy)+30 {
+		return
+	}
+	if dx < 0 {
+		dash.showView(dash.currentView + 1)
+		return
+	}
+	dash.showView(dash.currentView - 1)
+}
+
+//export onToggleEntityClicked
+func onToggleEntityClicked(entity *C.char) {
+	if hassClient == nil || entity == nil {
+		return
+	}
+	hassClient.ToggleEntity(C.GoString(entity))
+}
+
+//export onMacroActionClicked
+func onMacroActionClicked(action *C.char) {
+	if pcMacroClient == nil || action == nil {
+		return
+	}
+	go pcMacroClient.Execute(C.GoString(action))
+}
+
 // ─── Dashboard ───
 type DashboardOptions struct {
 	HardwareLandscape bool
+	HassLightEntities []string
+	PCEnabled         bool
 }
 
 type Dashboard struct {
@@ -164,54 +513,119 @@ type Dashboard struct {
 	options DashboardOptions
 
 	// Clock panel
-	greeting *C.GtkWidget
-	clockLbl *C.GtkWidget
-	dateLbl  *C.GtkWidget
-	calMonth *C.GtkWidget
-	calYear  *C.GtkWidget
-	calDays  [6][7]*C.GtkWidget
+	greeting  *C.GtkWidget
+	clockLbl  *C.GtkWidget
+	dateLbl   *C.GtkWidget
+	statusLbl *C.GtkWidget
+	calMonth  *C.GtkWidget
+	calYear   *C.GtkWidget
+	calDays   [6][7]*C.GtkWidget
 
 	// Devices
-	brightnessScale *C.GtkWidget
-	brightnessVal   *C.GtkWidget
-	batteryVal      *C.GtkWidget
+	brightnessScale  *C.GtkWidget
+	brightnessVal    *C.GtkWidget
+	brightnessMax    int
+	batteryCache     string
+	hassLightButtons map[string]*C.GtkWidget
+	hassLightNames   map[string]string
+
+	// Home Assistant cards
+	mailUnread             *C.GtkWidget
+	dashboardAgendaSummary *C.GtkWidget
+	dashboardAgendaItems   [4]*C.GtkWidget
+	calendarAgendaSummary  *C.GtkWidget
+	calendarAgendaItems    [4]*C.GtkWidget
+	pcConnStatus           *C.GtkWidget
+	pcTrackTitle           *C.GtkWidget
+	pcTrackArtist          *C.GtkWidget
+	pcModeBtn              *C.GtkWidget
+	pcMonitorBtn           *C.GtkWidget
+	pcPlayPauseBtn         *C.GtkWidget
 
 	// Views
-	views       [3]*C.GtkWidget
-	indicators  [3]*C.GtkWidget
+	views       [4]*C.GtkWidget
+	indicators  [4]*C.GtkWidget
 	currentView int
+
+	// Now Playing persistent bar
+	nowBar            *C.GtkWidget
+	nowPlayingTrack   *C.GtkWidget
+	nowPlayingArtist  *C.GtkWidget
+	nowPlayingStatus  *C.GtkWidget
+
+	// Info view status widgets
+	infoConnStatus   *C.GtkWidget
+	infoPCConnStatus *C.GtkWidget
+	infoHassSummary  *C.GtkWidget
+	infoBrightness   *C.GtkWidget
+
+	swipeStartX float64
+	swipeStartY float64
+	swipeActive bool
 }
 
 func NewDashboard(options DashboardOptions) *Dashboard {
 	C.w_init()
 	C.gtk_init(nil, nil)
-	d := &Dashboard{options: options}
+	d := &Dashboard{options: options, brightnessMax: readMaxBrightness(), hassLightButtons: map[string]*C.GtkWidget{}, hassLightNames: map[string]string{}}
+	if d.brightnessMax <= 0 {
+		d.brightnessMax = 2399
+	}
 	d.window = C.w_win(C.gboolean(boolToInt(options.HardwareLandscape)))
 	C.w_signal(d.window, C.CString("destroy"), C.GCallback(unsafe.Pointer(C.gtk_main_quit)))
+	C.w_enable_swipe(d.window)
 
 	root := C.w_vbox(0, 0)
 
 	// View container
 	vc := C.w_vbox(0, 0)
-	d.views[0] = buildCalendarView()
+	d.views[0] = buildCalendarView(d)
 	C.w_pack(vc, d.views[0], 1, 1, 0)
 	d.views[1] = d.buildDashboardView()
 	C.w_pack(vc, d.views[1], 1, 1, 0)
-	d.views[2] = buildLauncherView()
+	d.views[2] = buildLauncherView(d)
 	C.w_pack(vc, d.views[2], 1, 1, 0)
+	d.views[3] = d.buildInfoView()
+	C.w_pack(vc, d.views[3], 1, 1, 0)
 	C.w_pack(root, vc, 1, 1, 0)
 
-	// Indicators
-	dr := C.w_hbox(0, 6)
-	C.w_border(dr, 4)
-	for i := 0; i < 3; i++ {
+	// Indicators + Now Playing on same row
+	bottomRow := C.w_hbox(0, 0)
+
+	dr := C.w_hbox(0, 10)
+	C.w_border(dr, 6)
+	for i := 0; i < 4; i++ {
 		dot := C.w_lbl()
 		C.w_markup(dot, C.CString("<span font_desc='14'>●</span>"))
 		C.w_fg(dot, C.CString("#d9d1bf"))
 		d.indicators[i] = dot
 		C.w_pack(dr, dot, 0, 0, 0)
 	}
-	C.w_pack(root, dr, 0, 0, 0)
+	C.w_pack(bottomRow, dr, 0, 0, 0)
+
+	// ── Now Playing persistent bar ──
+	nb := C.w_hbox(0, 4)
+	C.w_border(nb, 4)
+	d.nowPlayingTrack = C.w_lbl()
+	C.w_markup(d.nowPlayingTrack, C.CString("<span font_desc='9' weight='bold' color='#626262'>Idle</span>"))
+	C.w_align(d.nowPlayingTrack, 0, 0.5)
+	C.w_pack(nb, d.nowPlayingTrack, 0, 0, 0)
+	sep := C.w_lbl()
+	C.w_markup(sep, C.CString("<span font_desc='9' color='#626262'> </span>"))
+	C.w_pack(nb, sep, 0, 0, 0)
+	d.nowPlayingArtist = C.w_lbl()
+	C.w_markup(d.nowPlayingArtist, C.CString("<span font_desc='8' color='#626262'></span>"))
+	C.w_align(d.nowPlayingArtist, 0, 0.5)
+	C.w_pack(nb, d.nowPlayingArtist, 1, 1, 0)
+	d.nowPlayingStatus = C.w_lbl()
+	C.w_markup(d.nowPlayingStatus, C.CString("<span font_desc='8' color='#626262'>○</span>"))
+	C.w_align(d.nowPlayingStatus, 1, 0.5)
+	C.w_pack_end(nb, d.nowPlayingStatus, 0, 0, 0)
+	d.nowBar = nb
+	C.w_pack(bottomRow, nb, 1, 1, 0)
+
+	C.w_pack(root, bottomRow, 0, 0, 0)
+
 	C.w_add(d.window, root)
 
 	d.showView(1)
@@ -220,9 +634,19 @@ func NewDashboard(options DashboardOptions) *Dashboard {
 
 func (d *Dashboard) Show() {
 	C.w_show_all(d.window)
+	// gtk_widget_show_all() re-shows children hidden during construction, so
+	// re-apply the selected view after realizing/showing the tree.
+	d.showView(d.currentView)
 	if !d.options.HardwareLandscape {
 		C.w_override()
 	}
+}
+
+func (d *Dashboard) runOnUI(fn func()) {
+	if d == nil {
+		return
+	}
+	enqueueUI(fn)
 }
 
 func (d *Dashboard) Loop() { C.gtk_main() }
@@ -232,70 +656,94 @@ func (d *Dashboard) buildDashboardView() *C.GtkWidget {
 	vb := C.w_vbox(0, 6)
 	C.w_border(vb, 10)
 
+	greetingFont := "10"
+	clockFont := "66"
+	dateFont := "16"
+	statusFont := "10"
+	calMonthFont := "15"
+	calYearFont := "11"
+	calDayFont := "9"
+	clockPad := uint(12)
+	calendarMiniWidth := 170
+	if d.options.HardwareLandscape {
+		greetingFont = "8"
+		clockFont = "48"
+		dateFont = "14"
+		statusFont = "9"
+		calMonthFont = "14"
+		calYearFont = "11"
+		calDayFont = "10"
+		clockPad = 6
+		calendarMiniWidth = 240
+	}
+
 	// ── Clock panel ──
 	cf := C.w_frame(nil)
 	C.w_shadow(cf, C.GTK_SHADOW_ETCHED_IN)
 	ch := C.w_hbox(0, 12)
-	C.w_border(ch, 12)
+	C.w_border(ch, C.uint(clockPad))
 
 	// Left column
 	left := C.w_vbox(0, 0)
 	d.greeting = C.w_lbl()
-	C.w_markup(d.greeting, C.CString("<span font_desc='10' weight='bold' color='#626262'>GOOD DAY</span>"))
+	C.w_markup(d.greeting, C.CString(fmt.Sprintf("<span font_desc='%s' weight='bold' color='#626262'>GOOD DAY</span>", greetingFont)))
 	C.w_align(d.greeting, 0, 0.5)
 	C.w_pack(left, d.greeting, 0, 0, 0)
 
 	d.clockLbl = C.w_lbl()
-	C.w_markup(d.clockLbl, C.CString("<span font_desc='72' weight='950'>--:--</span>"))
+	C.w_markup(d.clockLbl, C.CString(fmt.Sprintf("<span font_desc='%s' weight='950'>--:--</span>", clockFont)))
 	C.w_align(d.clockLbl, 0, 0.5)
 	C.w_pack(left, d.clockLbl, 0, 0, 0)
 
 	d.dateLbl = C.w_lbl()
-	C.w_markup(d.dateLbl, C.CString("<span font_desc='18' weight='850'>Loading...</span>"))
+	C.w_markup(d.dateLbl, C.CString(fmt.Sprintf("<span font_desc='%s' weight='850'>Loading...</span>", dateFont)))
 	C.w_align(d.dateLbl, 0, 0.5)
 	C.w_pack(left, d.dateLbl, 0, 0, 0)
 
-	statusL := C.w_lbl()
-	C.w_markup(statusL, C.CString("<span font_desc='11' color='#626262'>Kindle home • local dashboard</span>"))
-	C.w_align(statusL, 0, 0.5)
-	C.w_pack(left, statusL, 0, 0, 0)
+	// Status line: Bat + Mail
+	sl := C.w_hbox(0, 10)
+	d.statusLbl = C.w_lbl()
+	C.w_markup(d.statusLbl, C.CString(fmt.Sprintf("<span font_desc='%s' color='#626262'>Bat --%%</span>", statusFont)))
+	C.w_pack(sl, d.statusLbl, 0, 0, 0)
+
+	d.mailUnread = C.w_lbl()
+	C.w_markup(d.mailUnread, C.CString(fmt.Sprintf("<span font_desc='%s' color='#626262'>✉ 0</span>", statusFont)))
+	C.w_pack(sl, d.mailUnread, 0, 0, 0)
+	C.w_pack(left, sl, 0, 0, 0)
 
 	C.w_pack(ch, left, 1, 1, 0)
 
 	// Right: calendar mini
 	right := C.w_vbox(0, 2)
 	C.w_border(right, 4)
+	C.w_size(right, C.int(calendarMiniWidth), -1)
 
 	mr := C.w_hbox(0, 0)
-	ck := C.w_lbl()
-	C.w_markup(ck, C.CString("<span font_desc='9' weight='bold' color='#626262'>CALENDAR</span>"))
-	C.w_align(ck, 0, 0.5)
-	C.w_pack(mr, ck, 0, 0, 0)
-
 	d.calMonth = C.w_lbl()
-	C.w_markup(d.calMonth, C.CString("<span font_desc='15' weight='950'>Month</span>"))
+	C.w_markup(d.calMonth, C.CString(fmt.Sprintf("<span font_desc='%s' weight='950'>Month</span>", calMonthFont)))
 	C.w_align(d.calMonth, 0, 0.5)
 	C.w_pack(mr, d.calMonth, 0, 0, 4)
 
 	d.calYear = C.w_lbl()
-	C.w_markup(d.calYear, C.CString("<span font_desc='11' weight='bold' color='#626262'>----</span>"))
+	C.w_markup(d.calYear, C.CString(fmt.Sprintf("<span font_desc='%s' weight='bold' color='#626262'>----</span>", calYearFont)))
 	C.w_align(d.calYear, 1, 0.5)
 	C.w_pack_end(mr, d.calYear, 1, 1, 0)
 	C.w_pack(right, mr, 0, 0, 0)
 
 	grid := C.w_table(6, 7)
+	C.w_size(grid, C.int(calendarMiniWidth), -1)
 	C.w_table_spacing(grid, 1, 2)
 	for r := 0; r < 6; r++ {
 		for c := 0; c < 7; c++ {
 			cell := C.w_lbl()
-			C.w_markup(cell, C.CString("<span font_desc='9'> </span>"))
+			C.w_markup(cell, C.CString(fmt.Sprintf("<span font_desc='%s'> </span>", calDayFont)))
 			C.w_align(cell, 0.5, 0.5)
 			d.calDays[r][c] = cell
 			C.w_table_put(grid, cell, C.int(c), C.int(c+1), C.int(r), C.int(r+1))
 		}
 	}
 	C.w_pack(right, grid, 1, 1, 0)
-	C.w_pack(ch, right, 0, 0, 0)
+	C.w_pack(ch, right, 0, 1, 0)
 	C.w_add(cf, ch)
 	C.w_pack(vb, cf, 0, 0, 0)
 
@@ -304,65 +752,109 @@ func (d *Dashboard) buildDashboardView() *C.GtkWidget {
 
 	// Devices
 	dc := frameCard("Devices")
-	vbd := C.w_vbox(0, 4)
-	C.w_border(vbd, 6)
+	vbd := C.w_vbox(0, 8)
+	C.w_border(vbd, 10)
 	sub := C.w_lbl()
 	C.w_markup(sub, C.CString("<span font_desc='10' color='#626262'>Tap to toggle</span>"))
 	C.w_align(sub, 0, 0.5)
 	C.w_pack(vbd, sub, 0, 0, 0)
 
-	d.brightnessScale = C.w_hscale(0, 2399, 1)
-	C.w_size(d.brightnessScale, 120, -1)
-	C.w_pack(vbd, d.brightnessScale, 1, 1, 0)
-	d.brightnessVal = C.w_lbl()
-	C.w_pack(vbd, d.brightnessVal, 0, 0, 0)
+	for _, entity := range d.options.HassLightEntities {
+		name := prettyEntityName(entity)
+		btnText := lightButtonLabel(name, "--")
+		cs := C.CString(btnText)
+		btnName := C.CString(btnNameToggle)
+		btn := C.w_btn_named(cs, btnName)
+		C.free(unsafe.Pointer(btnName))
+		C.free(unsafe.Pointer(cs))
+		es := C.CString(entity)
+		C.w_bind_toggle(btn, es)
+		C.free(unsafe.Pointer(es))
+		C.w_size(btn, -1, -1)
+		C.w_pack(vbd, btn, 0, 0, 0)
+		d.hassLightButtons[entity] = btn
+		d.hassLightNames[entity] = name
+	}
 
-	ab := C.w_btn(C.CString("Apply"))
-	C.w_signal(ab, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onApplyBrightness)))
-	C.w_pack(vbd, ab, 0, 0, 0)
-
-	br := C.w_hbox(0, 4)
-	bl := C.w_lbl()
-	C.w_markup(bl, C.CString("<span font_desc='12'>Battery</span>"))
-	C.w_pack(br, bl, 0, 0, 0)
-	d.batteryVal = C.w_lbl()
-	C.w_pack_end(br, d.batteryVal, 1, 1, 0)
-	C.w_pack(vbd, br, 0, 0, 0)
 	C.w_add(dc, vbd)
-	C.w_pack(btm, dc, 1, 1, 0)
+	C.w_size(dc, 220, -1)
+	C.w_pack(btm, dc, 0, 1, 0)
 
-	// Middle col: Mail + Agenda
-	mc := C.w_vbox(0, 6)
-	C.w_pack(mc, placeholderCard("Mail", "0", "No unread mail"), 1, 1, 0)
-	C.w_pack(mc, placeholderCard("Agenda", "0", "No upcoming events"), 1, 1, 0)
+	// Middle col: Agenda
+	mc := C.w_vbox(0, 8)
+	C.w_pack(mc, d.agendaCard(), 1, 1, 0)
+	C.w_size(mc, 260, -1)
 	C.w_pack(btm, mc, 1, 1, 0)
 
-	// Right col: Music + Connection
-	rc := C.w_vbox(0, 6)
-	C.w_pack(rc, placeholderCard("Music", "--", "Waiting for PC..."), 1, 1, 0)
-	C.w_pack(rc, placeholderCard("Connection", "", "Home Assistant: Disconnected"), 0, 0, 0)
-	C.w_pack(btm, rc, 1, 1, 0)
+	// (Right col removed — music now lives in persistent bottom bar)
 
 	C.w_pack(vb, btm, 1, 1, 0)
 	return vb
 }
 
+func (d *Dashboard) mailCard() *C.GtkWidget { return nil } // Removed
+
+func (d *Dashboard) agendaCard() *C.GtkWidget {
+	f := frameCard("Agenda")
+	vb := C.w_vbox(0, 6)
+	C.w_border(vb, 10)
+	d.dashboardAgendaSummary = C.w_lbl()
+	C.w_pack(vb, d.dashboardAgendaSummary, 0, 0, 0)
+	for i := range d.dashboardAgendaItems {
+		d.dashboardAgendaItems[i] = C.w_lbl()
+		C.w_align(d.dashboardAgendaItems[i], 0, 0.5)
+		C.w_pack(vb, d.dashboardAgendaItems[i], 0, 0, 0)
+	}
+	C.w_add(f, vb)
+	d.UpdateAgenda(AgendaData{Summary: "No upcoming events"})
+	return f
+}
+
 func (d *Dashboard) showView(idx int) {
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(d.views) {
+		idx = len(d.views) - 1
+	}
 	for i, v := range d.views {
 		if i == idx {
 			C.w_show(v)
-			C.w_markup(d.indicators[i], C.CString("<span font_desc='14'>●</span>"))
-			C.w_fg(d.indicators[i], C.CString("#252525"))
+			setMarkup(d.indicators[i], "<span font_desc='14'>●</span>")
+			setFG(d.indicators[i], "#252525")
 		} else {
 			C.w_hide(v)
-			C.w_markup(d.indicators[i], C.CString("<span font_desc='14'>●</span>"))
-			C.w_fg(d.indicators[i], C.CString("#d9d1bf"))
+			setMarkup(d.indicators[i], "<span font_desc='14'>●</span>")
+			setFG(d.indicators[i], "#d9d1bf")
 		}
 	}
 	d.currentView = idx
 }
 
 func (d *Dashboard) UpdateClock(now time.Time) {
+	d.runOnUI(func() {
+		d.updateClock(now)
+	})
+}
+
+func (d *Dashboard) updateClock(now time.Time) {
+	greetingFont := "10"
+	clockFont := "66"
+	dateFont := "16"
+	statusFont := "10"
+	calMonthFont := "15"
+	calYearFont := "11"
+	calDayFont := "9"
+	if d.options.HardwareLandscape {
+		greetingFont = "8"
+		clockFont = "48"
+		dateFont = "14"
+		statusFont = "9"
+		calMonthFont = "14"
+		calYearFont = "11"
+		calDayFont = "10"
+	}
+
 	h := now.Hour()
 	greet := "Good night"
 	switch {
@@ -381,60 +873,191 @@ func (d *Dashboard) UpdateClock(now time.Time) {
 	sdow := int(first.Weekday())
 	dim := time.Date(ym, mm+1, 0, 0, 0, 0, 0, time.UTC).Day()
 
-	C.w_markup(d.greeting, C.CString(fmt.Sprintf("<span font_desc='10' weight='bold' color='#626262'>%s</span>", greet)))
-	C.w_markup(d.clockLbl, C.CString(fmt.Sprintf("<span font_desc='72' weight='950'>%s</span>", now.Format("15:04"))))
-	C.w_markup(d.dateLbl, C.CString(fmt.Sprintf("<span font_desc='18' weight='850'>%s</span>", now.Format("Monday, January 2"))))
-	C.w_markup(d.calMonth, C.CString(fmt.Sprintf("<span font_desc='15' weight='950'>%s</span>", months[mm])))
-	C.w_markup(d.calYear, C.CString(fmt.Sprintf("<span font_desc='11' weight='bold' color='#626262'>%d</span>", ym)))
+	setMarkup(d.greeting, fmt.Sprintf("<span font_desc='%s' weight='bold' color='#626262'>%s</span>", greetingFont, greet))
+	setMarkup(d.clockLbl, fmt.Sprintf("<span font_desc='%s' weight='950'>%s</span>", clockFont, now.Format("15:04")))
+	setMarkup(d.dateLbl, fmt.Sprintf("<span font_desc='%s' weight='850'>%s</span>", dateFont, now.Format("Monday, January 2")))
+	if d.batteryCache == "" || now.Second()%30 == 0 {
+		d.batteryCache = readBatteryCapacity()
+	}
+	setMarkup(d.statusLbl, fmt.Sprintf("<span font_desc='%s' color='#626262'>Bat %s%%</span>", statusFont, d.batteryCache))
+	setMarkup(d.calMonth, fmt.Sprintf("<span font_desc='%s' weight='950'>%s</span>", calMonthFont, months[mm]))
+	setMarkup(d.calYear, fmt.Sprintf("<span font_desc='%s' weight='bold' color='#626262'> %d</span>", calYearFont, ym))
 
 	day := 1
 	for r := 0; r < 6; r++ {
 		for c := 0; c < 7; c++ {
 			cell := d.calDays[r][c]
 			if (r == 0 && c < sdow) || day > dim {
-				C.w_markup(cell, C.CString("<span font_desc='9'> </span>"))
+				setMarkup(cell, fmt.Sprintf("<span font_desc='%s'> </span>", calDayFont))
 			} else {
-				m := fmt.Sprintf("<span font_desc='9'>%d</span>", day)
+				m := fmt.Sprintf("<span font_desc='%s'>%d</span>", calDayFont, day)
 				if day == dm {
-					m = fmt.Sprintf("<span font_desc='9' weight='bold' foreground='#ffffff' background='#252525'> %d </span>", day)
+					m = fmt.Sprintf("<span font_desc='%s' weight='bold' foreground='#ffffff' background='#252525'>%d</span>", calDayFont, day)
 				}
-				C.w_markup(cell, C.CString(m))
+				setMarkup(cell, m)
 				day++
 			}
 		}
 	}
-
-	if now.Second()%30 == 0 {
-		batt := readBatteryCapacity()
-		C.w_markup(d.batteryVal, C.CString(fmt.Sprintf("<span font_desc='12'>%s%%</span>", batt)))
-		C.w_markup(d.greeting, C.CString(fmt.Sprintf("<span font_desc='10' weight='bold' color='#626262'>%s • Bat %s%%</span>", greet, batt)))
-	}
 }
 
 // ── View helpers ──
-func buildCalendarView() *C.GtkWidget {
+func buildCalendarView(d *Dashboard) *C.GtkWidget {
 	vb := C.w_vbox(0, 6)
 	C.w_border(vb, 10)
 	card := frameCard("Upcoming Agenda")
+
+	// Agenda Items
+	vbA := C.w_vbox(0, 4)
+	C.w_border(vbA, 6)
+
+	// Add both to a container inside the frame
 	sub := C.w_lbl()
 	C.w_markup(sub, C.CString("<span font_desc='11' color='#626262'>Next 7 Days</span>"))
-	C.w_add(card, sub)
-	C.w_pack(vb, card, 0, 0, 0)
-	emp := C.w_lbl()
-	C.w_markup(emp, C.CString("<span font_desc='13'>Loading calendar...</span>"))
-	C.w_pack(vb, emp, 1, 1, 0)
+	C.w_align(sub, 0, 0.5)
+	C.w_pack(vbA, sub, 0, 0, 0)
+
+	d.calendarAgendaSummary = C.w_lbl()
+	C.w_align(d.calendarAgendaSummary, 0, 0.5)
+	C.w_pack(vbA, d.calendarAgendaSummary, 0, 0, 0)
+	for i := range d.calendarAgendaItems {
+		d.calendarAgendaItems[i] = C.w_lbl()
+		C.w_align(d.calendarAgendaItems[i], 0, 0.5)
+		C.w_pack(vbA, d.calendarAgendaItems[i], 0, 0, 0)
+	}
+	C.w_add(card, vbA)
+	C.w_pack(vb, card, 1, 1, 0)
+
+	d.UpdateAgenda(AgendaData{Summary: "Loading calendar..."})
 	return vb
 }
 
-func buildLauncherView() *C.GtkWidget {
+func buildLauncherView(d *Dashboard) *C.GtkWidget {
+	vb := C.w_vbox(0, 0)
+	C.w_border(vb, 10)
+
+	// ── 4×3 grid that grows to fill available X and Y ──
+	grid := C.w_table(4, 3)
+	C.w_table_spacing(grid, 10, 10)
+
+	// Row 0: Media transport
+	C.w_table_put(grid, d.newMacroButton("Prev", "prev_track", 0), 0, 1, 0, 1)
+	d.pcPlayPauseBtn = d.newMacroButton("Play", "play_pause", 0)
+	C.w_table_put(grid, d.pcPlayPauseBtn, 1, 2, 0, 1)
+	C.w_table_put(grid, d.newMacroButton("Next", "next_track", 0), 2, 3, 0, 1)
+
+	// Row 1: Toggles & status
+	d.pcModeBtn = d.newMacroButton("Power Mode", "pc_mode_toggle", 0)
+	C.w_table_put(grid, d.pcModeBtn, 0, 1, 1, 2)
+	C.w_table_put(grid, d.newMacroButton("Mute Mic", "mute_mic", 0), 1, 2, 1, 2)
+	d.pcMonitorBtn = d.newMacroButton("Monitors", "monitor_toggle", 0)
+	C.w_table_put(grid, d.pcMonitorBtn, 2, 3, 1, 2)
+
+	// Row 2: App launches
+	C.w_table_put(grid, d.newMacroButton("Chrome", "launch_chrome", 0), 0, 1, 2, 3)
+	C.w_table_put(grid, d.newMacroButton("Mail", "launch_mail", 0), 1, 2, 2, 3)
+	C.w_table_put(grid, d.newMacroButton("Sleep", "sleep", 0), 2, 3, 2, 3)
+
+	// Row 3: System
+	C.w_table_put(grid, d.newMacroButton("Restart", "restart", 0), 0, 1, 3, 4)
+	C.w_table_put(grid, d.newMacroButton("Fortnite", "launch_fortnite", 0), 1, 2, 3, 4)
+	C.w_table_put(grid, d.newMacroButton("Shutdown", "shutdown", 0), 2, 3, 3, 4)
+
+	C.w_pack(vb, grid, 1, 1, 0)
+	d.SetPCConnectionStatus(map[bool]string{true: "Disconnected", false: "Not configured"}[d.options.PCEnabled])
+	d.UpdatePCStatus(PCStatus{Status: "Idle"})
+	return vb
+}
+
+func (d *Dashboard) buildInfoView() *C.GtkWidget {
 	vb := C.w_vbox(0, 6)
 	C.w_border(vb, 10)
-	card := frameCard("PC Launcher")
-	sub := C.w_lbl()
-	C.w_markup(sub, C.CString("<span font_desc='10' color='#626262'>Remote Macro Controls</span>"))
-	C.w_add(card, sub)
-	C.w_pack(vb, card, 0, 0, 0)
+
+	// System status
+	card1 := frameCard("System")
+	vb1 := C.w_vbox(0, 6)
+	C.w_border(vb1, 10)
+
+	d.infoConnStatus = C.w_lbl()
+	C.w_markup(d.infoConnStatus, C.CString("<span font_desc='10' weight='bold'>Home Assistant</span>"))
+	C.w_pack(vb1, d.infoConnStatus, 0, 0, 0)
+	d.infoHassSummary = C.w_lbl()
+	C.w_markup(d.infoHassSummary, C.CString("<span font_desc='10' color='#626262'>Disconnected</span>"))
+	C.w_pack(vb1, d.infoHassSummary, 0, 0, 0)
+
+	d.infoPCConnStatus = C.w_lbl()
+	label := "Not configured"
+	if d.options.PCEnabled {
+		label = "Disconnected"
+	}
+	C.w_markup(d.infoPCConnStatus, C.CString(fmt.Sprintf("<span font_desc='10' color='#626262'>PC Macro: %s</span>", label)))
+	C.w_pack(vb1, d.infoPCConnStatus, 0, 0, 0)
+
+	C.w_add(card1, vb1)
+	C.w_pack(vb, card1, 0, 0, 0)
+
+	// Brightness card
+	card2 := frameCard("Brightness")
+	vb2 := C.w_vbox(0, 6)
+	C.w_border(vb2, 10)
+
+	d.brightnessScale = C.w_hscale(0, C.double(d.brightnessMax), 1)
+	C.w_size(d.brightnessScale, -1, -1)
+	C.w_pack(vb2, d.brightnessScale, 1, 1, 0)
+	d.brightnessVal = C.w_lbl()
+	C.w_markup(d.brightnessVal, C.CString("<span font_desc='9' color='#626262'>Brightness --%</span>"))
+	C.w_pack(vb2, d.brightnessVal, 0, 0, 0)
+	d.UpdateBrightnessValue(readBrightness())
+
+	applyBtnName := C.CString(btnNameApply)
+	ab := C.w_btn_named(C.CString("Apply"), applyBtnName)
+	C.free(unsafe.Pointer(applyBtnName))
+	C.w_signal(ab, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onApplyBrightness)))
+	C.w_pack(vb2, ab, 0, 0, 0)
+
+	C.w_add(card2, vb2)
+	C.w_pack(vb, card2, 0, 0, 0)
+
+	// Version info
+	card3 := frameCard("Kindle Dashboard")
+	vb3 := C.w_vbox(0, 6)
+	C.w_border(vb3, 10)
+	v := C.w_lbl()
+	C.w_markup(v, C.CString("<span font_desc='9' color='#626262'>Native GTK+2 • 800x600</span>"))
+	C.w_pack(vb3, v, 0, 0, 0)
+	C.w_add(card3, vb3)
+	C.w_pack(vb, card3, 0, 0, 0)
+
+	// Push remaining space
+	spacer := C.w_lbl()
+	C.w_pack(vb, spacer, 1, 1, 0)
+
 	return vb
+}
+
+func (d *Dashboard) newMacroButton(label, action string, width int) *C.GtkWidget {
+	mediaBtnName := C.CString(btnNameMedia)
+	cs := C.CString(label)
+	btn := C.w_btn_named(cs, mediaBtnName)
+	C.free(unsafe.Pointer(mediaBtnName))
+	C.free(unsafe.Pointer(cs))
+	// Add icon based on action name
+	iconCS := C.CString(action)
+	C.w_btn_set_icon(btn, iconCS)
+	C.free(unsafe.Pointer(iconCS))
+	as := C.CString(action)
+	C.w_bind_macro(btn, as)
+	C.free(unsafe.Pointer(as))
+	if width > 0 {
+		C.w_size(btn, C.int(width), C.int(width)) // square
+	}
+	return btn
+}
+
+// macroSquare creates a square macro button with fixed size, centered in its table cell.
+func (d *Dashboard) macroSquare(label, action string, size int) *C.GtkWidget {
+	btn := d.newMacroButton(label, action, size)
+	return btn
 }
 
 func frameCard(title string) *C.GtkWidget {
@@ -443,17 +1066,265 @@ func frameCard(title string) *C.GtkWidget {
 	return f
 }
 
-func placeholderCard(title, badge, subtext string) *C.GtkWidget {
-	f := frameCard(title)
-	vb := C.w_vbox(0, 4)
-	C.w_border(vb, 6)
-	l := C.w_lbl()
-	t := subtext
-	if badge != "" && badge != "0" {
-		t = fmt.Sprintf("[%s] %s", badge, subtext)
+func (d *Dashboard) SetConnectionStatus(status string) {
+	d.runOnUI(func() {
+		if d.infoHassSummary == nil {
+			return
+		}
+		setMarkup(d.infoHassSummary, fmt.Sprintf("<span font_desc='10' color='#626262'>%s</span>", esc(status)))
+	})
+}
+
+func (d *Dashboard) SetPCConnectionStatus(status string) {
+	d.runOnUI(func() {
+		if d.infoPCConnStatus == nil {
+			return
+		}
+		setMarkup(d.infoPCConnStatus, fmt.Sprintf("<span font_desc='10' color='#626262'>PC Macro: %s</span>", esc(status)))
+	})
+}
+
+func (d *Dashboard) UpdatePCStatus(status PCStatus) {
+	d.runOnUI(func() {
+		if d.pcTrackTitle != nil {
+			track := fallback(status.Track, "Not Playing")
+			setMarkup(d.pcTrackTitle, fmt.Sprintf("<span font_desc='11' weight='bold'>%s</span>", esc(shorten(track, 34))))
+		}
+		if d.pcTrackArtist != nil {
+			artist := fallback(status.Artist, map[bool]string{true: "PC Idle", false: "PC"}[status.Status == "Idle"])
+			setMarkup(d.pcTrackArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 40))))
+		}
+		if d.pcModeBtn != nil {
+			label := "Power Mode"
+			if strings.EqualFold(status.GamingMode, "power") {
+				label = "Save Mode"
+			}
+			setButtonLabel(d.pcModeBtn, label)
+		}
+		if d.pcMonitorBtn != nil {
+			label := "Monitors [OFF]"
+			if status.MonitorOn {
+				label = "Monitors [ON]"
+			}
+			setButtonLabel(d.pcMonitorBtn, label)
+		}
+		if d.pcPlayPauseBtn != nil {
+			if strings.EqualFold(status.Status, "playing") {
+				setButtonLabel(d.pcPlayPauseBtn, "Pause")
+				setButtonIcon(d.pcPlayPauseBtn, "pause")
+			} else {
+				setButtonLabel(d.pcPlayPauseBtn, "Play")
+				setButtonIcon(d.pcPlayPauseBtn, "play_pause")
+			}
+		}
+		// Update now-playing bar
+		d.updateNowPlayingFromPC(status)
+	})
+}
+
+func (d *Dashboard) updateNowPlayingFromPC(status PCStatus) {
+	track := fallback(status.Track, "")
+	artist := fallback(status.Artist, "")
+	stat := fallback(status.Status, "Idle")
+	if track == "" && artist == "" {
+		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold' color='#626262'>PC Idle</span>"))
+		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(stat)))
+		setMarkup(d.nowPlayingStatus, fmt.Sprintf("<span font_desc='8' color='#626262'>○</span>"))
+	} else {
+		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold'>%s</span>", esc(shorten(track, 25))))
+		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 20))))
+			badge := ">"
+		if strings.EqualFold(stat, "paused") {
+			badge = "|"
+		}
+		setMarkup(d.nowPlayingStatus, fmt.Sprintf("<span font_desc='8' weight='bold' color='#626262'>%s</span>", esc(badge)))
 	}
-	C.w_markup(l, C.CString(fmt.Sprintf("<span font_desc='10' color='#626262'>%s</span>", t)))
-	C.w_pack(vb, l, 0, 0, 0)
-	C.w_add(f, vb)
-	return f
+}
+
+func (d *Dashboard) UpdateMusic(m MusicData) {
+	d.runOnUI(func() {
+		// Update now-playing bar (music card was removed)
+		d.updateNowPlaying(m)
+	})
+}
+
+func (d *Dashboard) updateNowPlaying(m MusicData) {
+	track := m.Track
+	artist := m.Artist
+	if artist == "" {
+		artist = m.Album
+	}
+	if artist == "" {
+		artist = m.Source
+	}
+	if track == "" || track == "No track" {
+		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold' color='#626262'>No music</span>"))
+		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(m.Device)))
+		setMarkup(d.nowPlayingStatus, fmt.Sprintf("<span font_desc='8' color='#626262'>○</span>"))
+	} else {
+		badge := ">"
+		if strings.EqualFold(m.State, "paused") {
+			badge = "|"
+		}
+		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold'>%s</span>", esc(shorten(track, 25))))
+		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 20))))
+		setMarkup(d.nowPlayingStatus, fmt.Sprintf("<span font_desc='8' weight='bold' color='#626262'>%s</span>", esc(badge)))
+	}
+}
+
+func (d *Dashboard) UpdateMail(m MailData) {
+	d.runOnUI(func() {
+		if d.mailUnread == nil {
+			return
+		}
+		setMarkup(d.mailUnread, fmt.Sprintf("<span font_desc='11' color='#626262'>✉ %d</span>", m.Unread))
+	})
+}
+
+func (d *Dashboard) UpdateLight(light LightData) {
+	d.runOnUI(func() {
+		btn := d.hassLightButtons[light.EntityID]
+		if btn == nil {
+			return
+		}
+		name := light.Name
+		if name == "" {
+			name = d.hassLightNames[light.EntityID]
+		}
+		if name == "" {
+			name = prettyEntityName(light.EntityID)
+		}
+		d.hassLightNames[light.EntityID] = name
+		setButtonMarkup(btn, lightButtonLabel(name, light.State))
+		// Set button appearance based on state
+		on := strings.EqualFold(light.State, "on") || strings.EqualFold(light.State, "open")
+		if on {
+			C.w_btn_bg(btn, C.CString("#252525"))
+			setFG(btn, "#ffffff")
+		} else {
+			C.w_btn_bg(btn, C.CString("#f0f0f0"))
+			setFG(btn, "#626262")
+		}
+	})
+}
+
+func (d *Dashboard) UpdateAgenda(a AgendaData) {
+	d.runOnUI(func() {
+		d.updateAgendaWidgets(d.dashboardAgendaSummary, d.dashboardAgendaItems[:], a, 32, 38)
+		d.updateAgendaWidgets(d.calendarAgendaSummary, d.calendarAgendaItems[:], a, 54, 70)
+	})
+}
+
+func (d *Dashboard) updateAgendaWidgets(summaryLabel *C.GtkWidget, itemLabels []*C.GtkWidget, a AgendaData, summaryMax, itemMax int) {
+	if summaryLabel == nil {
+		return
+	}
+	summary := a.Summary
+	if summary == "" {
+		summary = "No events"
+	}
+	setMarkup(summaryLabel, fmt.Sprintf("<span font_desc='10' color='#626262'>%s</span>", esc(shorten(summary, summaryMax))))
+	for i, lbl := range itemLabels {
+		text := ""
+		if i < len(a.Events) {
+			e := a.Events[i]
+			if e.Time != "" {
+				text = e.Time + "  " + e.Title
+			} else {
+				text = e.Title
+			}
+		}
+		setMarkup(lbl, fmt.Sprintf("<span font_desc='9'>%s</span>", esc(shorten(text, itemMax))))
+	}
+}
+
+func (d *Dashboard) UpdateBrightnessValue(val int) {
+	d.runOnUI(func() {
+		if d.brightnessMax <= 0 {
+			d.brightnessMax = 2399
+		}
+		if val < 0 {
+			val = 0
+		}
+		if val > d.brightnessMax {
+			val = d.brightnessMax
+		}
+		if d.brightnessScale != nil {
+			C.w_scale_set(d.brightnessScale, C.double(val))
+		}
+		if d.brightnessVal != nil {
+			setMarkup(d.brightnessVal, fmt.Sprintf("<span font_desc='9' color='#626262'>Brightness %d%%</span>", d.BrightnessPercent(val)))
+		}
+	})
+}
+
+func (d *Dashboard) BrightnessPercent(val int) int {
+	if d.brightnessMax <= 0 {
+		return 0
+	}
+	return (val*100 + d.brightnessMax/2) / d.brightnessMax
+}
+
+func (d *Dashboard) SetBrightnessPercent(percent int) {
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	val := percent * d.brightnessMax / 100
+	writeBrightness(val)
+	d.UpdateBrightnessValue(val)
+}
+
+func setMarkup(label *C.GtkWidget, markup string) {
+	cs := C.CString(markup)
+	defer C.free(unsafe.Pointer(cs))
+	C.w_markup(label, cs)
+}
+
+func setFG(widget *C.GtkWidget, color string) {
+	cs := C.CString(color)
+	defer C.free(unsafe.Pointer(cs))
+	C.w_fg(widget, cs)
+}
+
+func setButtonLabel(button *C.GtkWidget, text string) {
+	cs := C.CString(text)
+	defer C.free(unsafe.Pointer(cs))
+	C.w_btn_text(button, cs)
+}
+
+func setButtonIcon(button *C.GtkWidget, icon string) {
+	cs := C.CString(icon)
+	defer C.free(unsafe.Pointer(cs))
+	C.w_btn_set_icon(button, cs)
+}
+
+func setButtonMarkup(button *C.GtkWidget, markup string) {
+	cs := C.CString(markup)
+	defer C.free(unsafe.Pointer(cs))
+	C.w_btn_markup(button, cs)
+}
+
+func lightButtonLabel(name, state string) string {
+	name = shorten(name, 16)
+	on := strings.EqualFold(strings.TrimSpace(state), "on") || strings.EqualFold(strings.TrimSpace(state), "open")
+	if on {
+		return fmt.Sprintf("<span weight='bold'>● %s</span>", esc(name))
+	}
+	return fmt.Sprintf("<span color='#999999'>○ %s</span>", esc(name))
+}
+
+func esc(s string) string { return html.EscapeString(s) }
+
+func shorten(s string, max int) string {
+	r := []rune(s)
+	if len(r) <= max {
+		return s
+	}
+	if max <= 1 {
+		return "..."
+	}
+	return string(r[:max-1]) + "..."
 }

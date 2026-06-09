@@ -19,7 +19,7 @@ func loadConfig() Config {
 		APIKey:  envOrDefault("MACRO_API_KEY", "your-super-secret-key"),
 		Port:    ":" + envOrDefault("MACRO_PORT", "8080"),
 		Gsudo:   envOrDefault("MACRO_GSUDO", `C:\Users\krr\scoop\apps\gsudo\current\gsudo.exe`),
-		LogPath: envOrDefault("MACRO_LOG_PATH", `C:\KindleDashboard\macro-daemon.log`),
+		LogPath: envOrDefault("MACRO_LOG_PATH", `C:\ProgramData\KindleDashboard\macro-daemon.log`),
 	}
 	return cfg
 }

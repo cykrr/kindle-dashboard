@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 const (
@@ -13,7 +14,7 @@ const (
 	batteryStatus  = "/sys/class/power_supply/bd71827_bat/status"
 )
 
-func readBrightness() int   { return readIntFile(brightnessFile) }
+func readBrightness() int    { return readIntFile(brightnessFile) }
 func readMaxBrightness() int { return readIntFile(maxBrightFile) }
 func writeBrightness(val int) {
 	os.WriteFile(brightnessFile, []byte(fmt.Sprintf("%d\n", val)), 0644)
@@ -36,5 +37,5 @@ func readFile(path string) string {
 	if err != nil {
 		return "N/A"
 	}
-	return string(b)
+	return strings.TrimSpace(string(b))
 }

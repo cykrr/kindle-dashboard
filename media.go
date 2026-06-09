@@ -24,15 +24,18 @@ type StatusResponse struct {
 	Status     string `json:"status"`
 }
 
-// getActivePowerScheme returns "power" or "normal" based on the active Windows power plan.
+// getActivePowerScheme returns "power", "save", or "normal" based on the active Windows power plan.
 func getActivePowerScheme() string {
 	out, err := runHiddenCmd("powercfg", "/getactivescheme")
 	if err != nil {
 		return "unknown"
 	}
-	s := string(out)
+	s := strings.ToLower(string(out))
 	if strings.Contains(s, "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c") {
 		return "power"
+	}
+	if strings.Contains(s, "a1841308-3541-4fab-bc81-f71556f20b4a") {
+		return "save"
 	}
 	return "normal"
 }
