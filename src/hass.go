@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
+	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,15 +16,15 @@ import (
 	"time"
 )
 
+const hassPollInterval = 2 * time.Minute
+
 type HassClient struct {
 	cfg  HassConfig
 	dash *Dashboard
 
-	mu       sync.Mutex
-	conn     *websocketConn
-	nextID   int
-	authFail bool
-	pending  map[int]string
+	mu     sync.Mutex
+	http   *http.Client
+	stopCh chan struct{}
 }
 
 type HassState struct {
@@ -65,125 +69,266 @@ type LightData struct {
 }
 
 func NewHassClient(cfg HassConfig, dash *Dashboard) *HassClient {
-	return &HassClient{cfg: cfg, dash: dash, nextID: 1, pending: map[int]string{}}
+	return &HassClient{
+		cfg:  cfg,
+		dash: dash,
+		http: &http.Client{Timeout: 10 * time.Second},
+	}
 }
 
+// Run starts the periodic polling loop. Blocks until Stop() is called.
 func (h *HassClient) Run() {
+	// Initial fetch on startup so the UI populates quickly.
+	if err := h.fetchAll(); err != nil {
+		log.Printf("hass: initial fetch failed: %v", err)
+		h.setConnStatus("Error")
+	} else {
+		h.setConnStatus("Connected")
+	}
+
+	ticker := time.NewTicker(hassPollInterval)
+	defer ticker.Stop()
+
 	for {
-		if h.authFail {
+		select {
+		case <-ticker.C:
+			if err := h.fetchAll(); err != nil {
+				log.Printf("hass: poll failed: %v", err)
+				h.setConnStatus("Error")
+				continue
+			}
+			h.setConnStatus("Connected")
+		case <-h.stopCh:
 			return
 		}
-		if err := h.connectAndRead(); err != nil {
-			log.Printf("hass: %v", err)
-		}
-		if h.authFail {
-			return
-		}
-		h.setConnStatus("Disconnected")
-		time.Sleep(30 * time.Second)
 	}
 }
 
-func (h *HassClient) connectAndRead() error {
-	wsURL := hassWSURL(h.cfg.URL)
-	if wsURL == "" {
-		return fmt.Errorf("missing HA websocket url")
+// Stop signals the polling loop to exit.
+func (h *HassClient) Stop() {
+	if h.stopCh != nil {
+		close(h.stopCh)
 	}
-	h.setConnStatus("Connecting…")
-	conn, err := dialWebSocket(wsURL, h.cfg.InsecureSkipVerify)
+}
+
+// fetchAll retrieves all entity states from the REST API and dispatches them.
+func (h *HassClient) fetchAll() error {
+	states, err := h.getStates("")
 	if err != nil {
-		h.setConnStatus("Error")
 		return err
 	}
-	defer conn.Close()
-	h.mu.Lock()
-	h.conn = conn
-	h.mu.Unlock()
-	defer func() {
-		h.mu.Lock()
-		if h.conn == conn {
-			h.conn = nil
-		}
-		h.mu.Unlock()
-	}()
-
-	for {
-		payload, err := conn.ReadMessage()
-		if err != nil {
-			return err
-		}
-		h.handleMessage(payload)
-	}
-}
-
-func (h *HassClient) handleMessage(payload []byte) {
-	var msg map[string]interface{}
-	if err := json.Unmarshal(payload, &msg); err != nil {
-		return
-	}
-	typeName, _ := msg["type"].(string)
-	switch typeName {
-	case "auth_required":
-		h.setConnStatus("Authenticating…")
-		h.send(map[string]interface{}{"type": "auth", "access_token": h.cfg.Token})
-	case "auth_ok":
-		h.setConnStatus("Connected")
-		h.sendWithID(map[string]interface{}{"type": "get_states"})
-		h.sendWithID(map[string]interface{}{"type": "subscribe_events", "event_type": "state_changed"})
-		h.RequestCalendarEvents(true)
-	case "auth_invalid":
-		h.authFail = true
-		h.setConnStatus("Auth Failed")
-		h.mu.Lock()
-		conn := h.conn
-		h.mu.Unlock()
-		if conn != nil {
-			_ = conn.Close()
-		}
-	case "result":
-		h.handleResult(msg)
-	case "event":
-		h.handleEvent(msg)
-	}
-}
-
-func (h *HassClient) handleResult(msg map[string]interface{}) {
-	id := intNumber(msg["id"])
-	h.mu.Lock()
-	kind := h.pending[id]
-	delete(h.pending, id)
-	h.mu.Unlock()
-
-	if kind == "calendar_events" {
-		if success, ok := msg["success"].(bool); ok && !success {
-			return
-		}
-		h.dash.UpdateAgenda(parseCalendarData(msg["result"]))
-		return
-	}
-
-	result, ok := msg["result"].([]interface{})
-	if !ok {
-		return
-	}
-	for _, item := range result {
-		if st := decodeState(item); st.EntityID != "" {
-			h.handleState(st)
-		}
-	}
-}
-
-func (h *HassClient) handleEvent(msg map[string]interface{}) {
-	event, _ := msg["event"].(map[string]interface{})
-	if typ, _ := event["event_type"].(string); typ != "state_changed" {
-		return
-	}
-	data, _ := event["data"].(map[string]interface{})
-	if st := decodeState(data["new_state"]); st.EntityID != "" {
+	for _, st := range states {
 		h.handleState(st)
 	}
+	return nil
 }
 
+// fetchOne retrieves a single entity state by ID.
+func (h *HassClient) fetchOne(entityID string) (HassState, error) {
+	states, err := h.getStates(entityID)
+	if err != nil {
+		return HassState{}, err
+	}
+	if len(states) == 0 {
+		return HassState{}, fmt.Errorf("entity %q not found", entityID)
+	}
+	return states[0], nil
+}
+
+// getStates fetches entity states from the REST API.
+// If entityID is empty, fetches all states; otherwise a single entity.
+func (h *HassClient) getStates(entityID string) ([]HassState, error) {
+	path := "/api/states"
+	if entityID != "" {
+		path += "/" + entityID
+	}
+	body, err := h.restGet(path)
+	if err != nil {
+		return nil, err
+	}
+	if entityID != "" {
+		var st HassState
+		if err := json.Unmarshal(body, &st); err != nil {
+			return nil, fmt.Errorf("decode state: %w", err)
+		}
+		return []HassState{st}, nil
+	}
+	var states []HassState
+	if err := json.Unmarshal(body, &states); err != nil {
+		return nil, fmt.Errorf("decode states: %w", err)
+	}
+	return states, nil
+}
+
+// restGet performs an authenticated GET request to the HASS API.
+func (h *HassClient) restGet(path string) ([]byte, error) {
+	url := strings.TrimRight(h.cfg.URL, "/") + path
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+h.cfg.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := h.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http get %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("http %d %s: %s", resp.StatusCode, path, strings.TrimSpace(string(body)))
+	}
+	return body, nil
+}
+
+// restPost performs an authenticated POST request to the HASS API.
+func (h *HassClient) restPost(path string, payload interface{}) ([]byte, error) {
+	url := strings.TrimRight(h.cfg.URL, "/") + path
+	var b []byte
+	if payload != nil {
+		var err error
+		b, err = json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+h.cfg.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := h.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http post %s: %w", path, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("http %d %s: %s", resp.StatusCode, path, strings.TrimSpace(string(body)))
+	}
+	return body, nil
+}
+
+// ToggleEntity toggles a light/entity via REST and immediately fetches its state.
+func (h *HassClient) ToggleEntity(entity string) {
+	if entity == "" || !strings.Contains(entity, ".") {
+		return
+	}
+	domain := strings.SplitN(entity, ".", 2)[0]
+	payload := map[string]interface{}{
+		"entity_id": entity,
+	}
+	if _, err := h.restPost("/api/services/"+domain+"/toggle", payload); err != nil {
+		log.Printf("hass: toggle %s: %v", entity, err)
+		return
+	}
+	// Brief pause for HA to process the state change, then fetch the result.
+	time.Sleep(300 * time.Millisecond)
+	if st, err := h.fetchOne(entity); err == nil {
+		h.handleState(st)
+	} else {
+		log.Printf("hass: fetch after toggle %s: %v", entity, err)
+	}
+}
+
+// PublishBrightnessToHass publishes brightness via REST and fetches the result.
+func (h *HassClient) PublishBrightnessToHass(percent int) {
+	entity := h.cfg.BrightnessEntity
+	if entity == "" {
+		return
+	}
+	domain := strings.SplitN(entity, ".", 2)[0]
+	payload := map[string]interface{}{
+		"entity_id": entity,
+	}
+	switch domain {
+	case "number", "input_number":
+		payload["value"] = percent
+		if _, err := h.restPost("/api/services/"+domain+"/set_value", payload); err != nil {
+			log.Printf("hass: brightness set %s: %v", entity, err)
+			return
+		}
+	case "light":
+		payload["brightness_pct"] = percent
+		if _, err := h.restPost("/api/services/"+domain+"/turn_on", payload); err != nil {
+			log.Printf("hass: brightness set %s: %v", entity, err)
+			return
+		}
+	default:
+		return
+	}
+	time.Sleep(300 * time.Millisecond)
+	if st, err := h.fetchOne(entity); err == nil {
+		h.handleState(st)
+	} else {
+		log.Printf("hass: fetch after brightness %s: %v", entity, err)
+	}
+}
+
+// RequestCalendarEvents fetches the next 7 days of calendar events.
+// Uses the proper REST calendar endpoint GET /api/calendars/<entity_id>.
+func (h *HassClient) RequestCalendarEvents(force bool) {
+	if len(h.cfg.CalendarEntities) == 0 {
+		return
+	}
+	start := time.Now()
+	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
+	end := start.AddDate(0, 0, 7)
+
+	// Build the response map in the format parseCalendarData expects:
+	//   response[entityID] = {events: [...]}
+	response := make(map[string]interface{})
+
+	// Format timestamps as ISO 8601 for the calendar API.
+	// NB: we format the date portion separately and append literal time
+	// because Go's Format() interprets numbers like "23" as format tokens
+	// (day-of-month + 12-hour-hour) instead of literal "23:59:59".
+	startStr := start.Format("2006-01-02") + "T00:00:00Z"
+	endStr := end.Format("2006-01-02") + "T23:59:59Z"
+
+	for _, entityID := range h.cfg.CalendarEntities {
+		path := fmt.Sprintf("/api/calendars/%s?start=%s&end=%s",
+			url.QueryEscape(entityID),
+			url.QueryEscape(startStr),
+			url.QueryEscape(endStr),
+		)
+		body, err := h.restGet(path)
+		if err != nil {
+			log.Printf("hass: calendar %s: %v", entityID, err)
+			continue
+		}
+
+		var events []interface{}
+		if err := json.Unmarshal(body, &events); err != nil {
+			log.Printf("hass: calendar decode %s: %v", entityID, err)
+			continue
+		}
+		response[entityID] = map[string]interface{}{
+			"events": events,
+		}
+	}
+
+	if len(response) == 0 {
+		h.dash.UpdateAgenda(AgendaData{Summary: "No upcoming events"})
+		return
+	}
+
+	wrapped := map[string]interface{}{
+		"response": response,
+	}
+	h.dash.UpdateAgenda(parseCalendarData(wrapped))
+}
+
+// handleState dispatches state updates to the dashboard.
 func (h *HassClient) handleState(st HassState) {
 	switch st.EntityID {
 	case h.cfg.MusicEntity:
@@ -213,129 +358,13 @@ func (h *HassClient) handleBrightnessState(st HassState) {
 	}
 }
 
-func (h *HassClient) ToggleEntity(entity string) {
-	if entity == "" || !strings.Contains(entity, ".") {
-		return
-	}
-	domain := strings.SplitN(entity, ".", 2)[0]
-	h.sendWithID(map[string]interface{}{
-		"type":    "call_service",
-		"domain":  domain,
-		"service": "toggle",
-		"target":  map[string]interface{}{"entity_id": entity},
-	})
-}
-
-func (h *HassClient) PublishBrightnessToHass(percent int) {
-	entity := h.cfg.BrightnessEntity
-	if entity == "" {
-		return
-	}
-	domain := strings.SplitN(entity, ".", 2)[0]
-	msg := map[string]interface{}{
-		"type":   "call_service",
-		"domain": domain,
-		"target": map[string]interface{}{"entity_id": entity},
-	}
-	switch domain {
-	case "number", "input_number":
-		msg["service"] = "set_value"
-		msg["service_data"] = map[string]interface{}{"value": percent}
-	case "light":
-		msg["service"] = "turn_on"
-		msg["service_data"] = map[string]interface{}{"brightness_pct": percent}
-	default:
-		return
-	}
-	h.sendWithID(msg)
-}
-
-func (h *HassClient) RequestCalendarEvents(force bool) {
-	if len(h.cfg.CalendarEntities) == 0 {
-		return
-	}
-	start := time.Now()
-	start = time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, start.Location())
-	end := start.AddDate(0, 0, 7)
-	id := h.nextMessageID()
-	h.mu.Lock()
-	h.pending[id] = "calendar_events"
-	h.mu.Unlock()
-	h.send(map[string]interface{}{
-		"id":              id,
-		"type":            "call_service",
-		"domain":          "calendar",
-		"service":         "get_events",
-		"target":          map[string]interface{}{"entity_id": h.cfg.CalendarEntities},
-		"service_data":    map[string]interface{}{"start_date_time": start.Format(time.RFC3339), "end_date_time": end.Format(time.RFC3339)},
-		"return_response": true,
-	})
-}
-
-func (h *HassClient) sendWithID(msg map[string]interface{}) {
-	msg["id"] = h.nextMessageID()
-	h.send(msg)
-}
-
-func (h *HassClient) send(msg map[string]interface{}) {
-	b, err := json.Marshal(msg)
-	if err != nil {
-		return
-	}
-	h.mu.Lock()
-	conn := h.conn
-	h.mu.Unlock()
-	if conn == nil {
-		return
-	}
-	if err := conn.WriteText(b); err != nil {
-		log.Printf("hass send: %v", err)
-	}
-}
-
-func (h *HassClient) nextMessageID() int {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	id := h.nextID
-	h.nextID++
-	return id
-}
-
 func (h *HassClient) setConnStatus(status string) {
 	if h.dash != nil {
 		h.dash.SetConnectionStatus(status)
 	}
 }
 
-func hassWSURL(raw string) string {
-	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
-	if raw == "" {
-		return ""
-	}
-	if strings.HasPrefix(raw, "wss://") || strings.HasPrefix(raw, "ws://") {
-		if strings.HasSuffix(raw, "/api/websocket") {
-			return raw
-		}
-		return raw + "/api/websocket"
-	}
-	if strings.HasPrefix(raw, "https://") {
-		return "wss://" + strings.TrimPrefix(raw, "https://") + "/api/websocket"
-	}
-	if strings.HasPrefix(raw, "http://") {
-		return "ws://" + strings.TrimPrefix(raw, "http://") + "/api/websocket"
-	}
-	return "wss://" + strings.TrimLeft(raw, "/") + "/api/websocket"
-}
-
-func decodeState(v interface{}) HassState {
-	var st HassState
-	b, err := json.Marshal(v)
-	if err != nil {
-		return st
-	}
-	_ = json.Unmarshal(b, &st)
-	return st
-}
+// ── Parsers — unchanged from original ──
 
 func parseMusicData(st HassState) MusicData {
 	attrs := st.Attributes

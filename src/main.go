@@ -19,7 +19,12 @@ func main() {
 
 	if pcEnabled {
 		pcMacroClient = NewPCMacroClient(cfg, dash)
-		go pcMacroClient.Run()
+		// One-shot initial status fetch. The SSE stream is opened on-demand
+		// when the user navigates to the launcher view.
+		if err := pcMacroClient.RefreshStatus(); err != nil {
+			log.Printf("pc macro: initial status: %v", err)
+			dash.SetPCConnectionStatus("Disconnected")
+		}
 	} else {
 		dash.SetPCConnectionStatus("Not configured")
 	}
