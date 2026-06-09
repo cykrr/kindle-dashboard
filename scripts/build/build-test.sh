@@ -6,8 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/setup-env.sh"
 
-SRC_DIR="${SCRIPT_DIR}/src"
-DEPLOY_DIR="${SCRIPT_DIR}/deploy"
+SRC_DIR="${SCRIPT_DIR}/../../cmd/dashboard"
+DEPLOY_DIR="${SCRIPT_DIR}/../../deploy"
 mkdir -p "${DEPLOY_DIR}"
 
 SYSROOT_INC="${SYSROOT}/usr/include"

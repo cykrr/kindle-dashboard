@@ -98,7 +98,7 @@ if ($Uninstall) {
 }
 
 # ── Ensure source binary ──
-$sourceExe = Join-Path $scriptDir "macro-daemon.exe"
+$sourceExe = Join-Path $scriptDir "..\..\macro-daemon.exe"
 if (-not (Test-Path $sourceExe)) {
     Write-Error "Binary not found at $sourceExe — re-run with -Build to compile it"
     exit 1
@@ -114,7 +114,7 @@ Copy-Item -Path $sourceExe -Destination $binaryPath -Force
 Write-Host "✓ Installed binary: $binaryPath"
 
 # ── Seed .env from existing ──
-$sourceEnv = Join-Path $scriptDir ".env"
+$sourceEnv = Join-Path $scriptDir "..\..\.env"
 if (Test-Path $sourceEnv) {
     Copy-Item -Path $sourceEnv -Destination $configPath -Force
     Write-Host "✓ Copied config: $configPath"

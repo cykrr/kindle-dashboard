@@ -2,12 +2,12 @@
 # Full build pipeline for native GTK dashboard on Kindle
 #
 # Usage:
-#   ./build-all.sh bootstrap   # Full build: toolchain → GTK → Go test
-#   ./build-all.sh toolchain   # Step 1: Build koxtoolchain (30 min)
-#   ./build-all.sh sdk         # Step 2: Install KMC SDK (needs toolchain)
-#   ./build-all.sh gtk         # Step 3: Cross-compile GTK 2.24.33
-#   ./build-all.sh test        # Step 4: Build Go hello-world test
-#   ./build-all.sh dashboard   # Step 5: Build the full dashboard
+#   ./scripts/build/build-all.sh bootstrap   # Full build: toolchain → GTK → Go test
+#   ./scripts/build/build-all.sh toolchain   # Step 1: Build koxtoolchain (30 min)
+#   ./scripts/build/build-all.sh sdk         # Step 2: Install KMC SDK (needs toolchain)
+#   ./scripts/build/build-all.sh gtk         # Step 3: Cross-compile GTK 2.24.33
+#   ./scripts/build/build-all.sh test        # Step 4: Build Go hello-world test
+#   ./scripts/build/build-all.sh dashboard   # Step 5: Build the full dashboard
 #
 # Prerequisites:
 #   Arch: sudo pacman -S base-devel curl git gperf help2man unzip wget \
