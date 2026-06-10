@@ -231,13 +231,7 @@ func (h *HassClient) ToggleEntity(entity string) {
 		log.Printf("hass: toggle %s: %v", entity, err)
 		return
 	}
-	// Brief pause for HA to process the state change, then fetch the result.
-	time.Sleep(300 * time.Millisecond)
-	if st, err := h.fetchOne(entity); err == nil {
-		h.handleState(st)
-	} else {
-		log.Printf("hass: fetch after toggle %s: %v", entity, err)
-	}
+	h.confirmState(entity)
 }
 
 // PublishBrightnessToHass publishes brightness via REST and fetches the result.
@@ -266,12 +260,19 @@ func (h *HassClient) PublishBrightnessToHass(percent int) {
 	default:
 		return
 	}
-	time.Sleep(300 * time.Millisecond)
-	if st, err := h.fetchOne(entity); err == nil {
-		h.handleState(st)
-	} else {
-		log.Printf("hass: fetch after brightness %s: %v", entity, err)
+	h.confirmState(entity)
+}
+
+func (h *HassClient) confirmState(entity string) {
+	// Retry up to 3 times with 500ms delay to give HA time to propagate state
+	for i := 0; i < 3; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if st, err := h.fetchOne(entity); err == nil {
+			h.handleState(st)
+			return
+		}
 	}
+	log.Printf("hass: failed to fetch state after update %s", entity)
 }
 
 // RequestCalendarEvents fetches the next 7 days of calendar events.
