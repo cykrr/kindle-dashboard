@@ -4,13 +4,26 @@ import (
 	"context"
 	"flag"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
 
 func main() {
 	hwLandscape := flag.Bool("hw-landscape", false, "Ask Kindle window manager for hardware landscape orientation")
 	flag.Parse()
+
+	// Restore the Kindle's launcher UI on exit, however we exit.
+	defer RestoreKindleFramework()
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		RestoreKindleFramework()
+		os.Exit(0)
+	}()
 
 	cfg, cfgErr := LoadHassConfig()
 	pcEnabled := strings.TrimSpace(cfg.PCMacroURL) != "" && strings.TrimSpace(cfg.PCMacroKey) != ""

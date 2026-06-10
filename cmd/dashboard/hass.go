@@ -238,9 +238,12 @@ func (h *HassClient) ToggleEntity(entity string) {
 func (h *HassClient) PublishBrightnessToHass(percent int) {
 	entity := h.cfg.BrightnessEntity
 	if entity == "" {
+		log.Println("hass: brightness entity is empty")
 		return
 	}
 	domain := strings.SplitN(entity, ".", 2)[0]
+	log.Printf("hass: publishing brightness %d%% to %s (domain: %s)", percent, entity, domain)
+
 	payload := map[string]interface{}{
 		"entity_id": entity,
 	}
@@ -258,6 +261,7 @@ func (h *HassClient) PublishBrightnessToHass(percent int) {
 			return
 		}
 	default:
+		log.Printf("hass: unsupported brightness domain: %s", domain)
 		return
 	}
 	h.confirmState(entity)

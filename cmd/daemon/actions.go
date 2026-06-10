@@ -24,7 +24,7 @@ func togglePowerMode() error {
 func executeAction(action string) error {
 	switch action {
 	case "mute_mic":
-		return runPowerShell(false, `Set-AudioDevice -Index 8 -ToggleMute`)
+		return runPowerShell(false, `$sig='[DllImport("user32.dll")]public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);'; $k=Add-Type -MemberDefinition $sig -Name Win32KeyEvent -Namespace Win32Functions -PassThru; $k::keybd_event(0x08,0,0,[UIntPtr]::Zero); $k::keybd_event(0x0D,0,0,[UIntPtr]::Zero); Start-Sleep -Milliseconds 50; $k::keybd_event(0x08,0,2,[UIntPtr]::Zero); $k::keybd_event(0x0D,0,2,[UIntPtr]::Zero)`)
 	case "play_pause":
 		return runPowerShell(false, `(New-Object -ComObject WScript.Shell).SendKeys([char]179)`)
 	case "prev_track":
@@ -117,6 +117,12 @@ func isUnknownAction(err error) bool {
 // notifyWindows sends a Windows balloon-tip notification.
 // Uses PowerShell's NotifyIcon so it works from any context (hidden, GUI, etc.).
 func notifyWindows(title, message, iconType string) {
+	notifyWindowsClickCopy(title, message, iconType, "")
+}
+
+// notifyWindowsClickCopy sends a Windows balloon-tip notification. If clipText
+// is non-empty, clicking the balloon copies clipText to the clipboard.
+func notifyWindowsClickCopy(title, message, iconType, clipText string) {
 	switch iconType {
 	case "error":
 		iconType = "Error"
@@ -125,7 +131,8 @@ func notifyWindows(title, message, iconType string) {
 	default:
 		iconType = "Info"
 	}
-	_ = runPowerShell(false, fmt.Sprintf(`
+	if clipText == "" {
+		_ = runPowerShell(false, fmt.Sprintf(`
 Add-Type -AssemblyName System.Windows.Forms
 $n = New-Object System.Windows.Forms.NotifyIcon
 $n.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon('C:\Program Files\KindleDashboard\macro-daemon.exe')
@@ -137,6 +144,26 @@ $n.ShowBalloonTip(5000)
 Start-Sleep 6
 $n.Dispose()
 `, psEscape(title), psEscape(message), iconType))
+		return
+	}
+	_ = runPowerShell(false, fmt.Sprintf(`
+Add-Type -AssemblyName System.Windows.Forms
+$n = New-Object System.Windows.Forms.NotifyIcon
+$n.Icon = [System.Drawing.Icon]::ExtractAssociatedIcon('C:\Program Files\KindleDashboard\macro-daemon.exe')
+$n.BalloonTipTitle = '%s'
+$n.BalloonTipText = '%s'
+$n.BalloonTipIcon = '%s'
+$n.Visible = $true
+$clip = '%s'
+$n.add_BalloonTipClicked({ Set-Clipboard -Value $clip }.GetNewClosure())
+$n.ShowBalloonTip(5000)
+$deadline = (Get-Date).AddSeconds(6)
+while ((Get-Date) -lt $deadline) {
+    [System.Windows.Forms.Application]::DoEvents()
+    Start-Sleep -Milliseconds 100
+}
+$n.Dispose()
+`, psEscape(title), psEscape(message), iconType, psEscape(clipText)))
 }
 
 // psEscape escapes a string for safe embedding in a PowerShell single-quoted string.
@@ -171,7 +198,7 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		log.Printf("Action %s failed: %v", action, err)
-		notifyWindows("Kindle Macro: Action Failed", action+": "+err.Error(), "error")
+		notifyWindowsClickCopy("Kindle Macro: Action Failed", action+": "+err.Error(), "error", action+": "+err.Error())
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

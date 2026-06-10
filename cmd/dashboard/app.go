@@ -24,13 +24,8 @@ static void w_apply_button_style() {
     gtk_rc_parse_string(
         // ── Base button style ──
         // White/near-white bg by default, dark bg when pressed — e-ink friendly.
-        // Uses flat engine for boxy (non-rounded) corners.
         "style \"kindle-btn\"\n"
         "{\n"
-        "  engine \"flat\"\n"
-        "  GtkButton::inner-border = {4, 4, 6, 6}\n"
-        "  GtkButton::child-displacement-x = 0\n"
-        "  GtkButton::child-displacement-y = 0\n"
         "  xthickness = 2\n"
         "  ythickness = 2\n"
         "  font_name = \"sans bold 10\"\n"
@@ -46,7 +41,6 @@ static void w_apply_button_style() {
         // ── Primary action buttons (Apply, media transport) ──
         "style \"kindle-btn-primary\" = \"kindle-btn\"\n"
         "{\n"
-        "  engine \"flat\"\n"
         "  xthickness = 2\n"
         "  ythickness = 2\n"
         "  font_name = \"sans 10 bold\"\n"
@@ -62,11 +56,9 @@ static void w_apply_button_style() {
         // ── Toggle (light entity) buttons ──
         "style \"kindle-btn-toggle\" = \"kindle-btn\"\n"
         "{\n"
-        "  engine \"flat\"\n"
         "  font_name = \"sans 11 bold\"\n"
         "  xthickness = 8\n"
         "  ythickness = 8\n"
-        "  GtkButton::inner-border = {8, 8, 8, 8}\n"
         "  bg[NORMAL] = {0.94, 0.94, 0.94}\n"
         "  bg[PRELIGHT] = {0.94, 0.94, 0.94}\n"
         "  bg[ACTIVE] = {0.22, 0.22, 0.22}\n"
@@ -79,7 +71,6 @@ static void w_apply_button_style() {
         // ── Frame / card style ──
         "style \"kindle-frame\"\n"
         "{\n"
-        "  GtkFrame::border-width = 2\n"
         "  xthickness = 2\n"
         "  ythickness = 2\n"
         "  bg[NORMAL] = {0.92, 0.92, 0.92}\n"
@@ -125,14 +116,21 @@ static GtkWidget* w_make_icon(const char *name) {
         cairo_move_to(cr, 11, 12); cairo_line_to(cr, 11, 17); cairo_stroke(cr);
         cairo_arc(cr, 11, 17, 4, 3.1416, 0); cairo_stroke(cr);
         cairo_move_to(cr, 4, 4); cairo_line_to(cr, 18, 20); cairo_stroke(cr);
-    } else if (strcmp(name, "monitor_toggle") == 0) {
+    } else if (strcmp(name, "monitor_toggle") == 0 || strcmp(name, "monitor_off") == 0) {
         cairo_rectangle(cr, 3, 3, 18, 12); cairo_stroke(cr);
         cairo_move_to(cr, 8, 17); cairo_line_to(cr, 16, 17); cairo_stroke(cr);
         cairo_move_to(cr, 12, 15); cairo_line_to(cr, 12, 17); cairo_stroke(cr);
-    } else if (strcmp(name, "pc_mode_toggle") == 0) {
+    } else if (strcmp(name, "monitor_on") == 0) {
+        cairo_rectangle(cr, 3, 3, 18, 12); cairo_fill(cr);
+        cairo_move_to(cr, 8, 17); cairo_line_to(cr, 16, 17); cairo_stroke(cr);
+        cairo_move_to(cr, 12, 15); cairo_line_to(cr, 12, 17); cairo_stroke(cr);
+    } else if (strcmp(name, "pc_mode_toggle") == 0 || strcmp(name, "pc_mode_power") == 0) {
         cairo_arc(cr, 12, 12, 7, 0, 6.2832); cairo_move_to(cr, 10, 12); cairo_line_to(cr, 10, 14); cairo_move_to(cr, 9, 13); cairo_line_to(cr, 11, 13); cairo_stroke(cr);
         cairo_arc(cr, 16, 10, 1.5, 0, 6.2832); cairo_fill(cr);
         cairo_arc(cr, 17, 14, 1.5, 0, 6.2832); cairo_fill(cr);
+    } else if (strcmp(name, "pc_mode_save") == 0) {
+        cairo_arc(cr, 12, 12, 7, 0, 6.2832); cairo_stroke(cr);
+        cairo_move_to(cr, 12, 7); cairo_line_to(cr, 12, 12); cairo_line_to(cr, 16, 14); cairo_stroke(cr);
     } else if (strcmp(name, "launch_chrome") == 0) {
         cairo_arc(cr, 12, 12, 9, 0, 6.2832); cairo_stroke(cr);
         cairo_arc(cr, 12, 12, 4, 0, 6.2832); cairo_stroke(cr);
@@ -223,6 +221,12 @@ static GtkWidget* w_btn_named(const char *t, const char *n) {
 static void w_btn_set_icon(GtkWidget *btn, const char *icon) {
     GtkWidget *img = w_make_icon(icon);
     gtk_button_set_image(GTK_BUTTON(btn), img);
+}
+static GtkWidget* w_btn_icon(const char *icon, const char *n) {
+    GtkWidget *b = gtk_button_new();
+    gtk_widget_set_name(b, n);
+    w_btn_set_icon(b, icon);
+    return b;
 }
 static void w_btn_text(GtkWidget *b, const char *t) { gtk_button_set_label(GTK_BUTTON(b), t); }
 static GtkWidget* w_hscale(double min, double max, double step) {
@@ -404,6 +408,8 @@ import "C"
 import (
 	"fmt"
 	"html"
+	"log"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -595,7 +601,23 @@ type Dashboard struct {
 	swipeActive bool
 }
 
+// stopKindleFramework kills the Kindle's lab126 launcher/UI so our window
+// has the screen to itself.
+func stopKindleFramework() {
+	if err := exec.Command("sh", "-c", "stop lab126_gui 2>/dev/null || /etc/init.d/framework stop 2>/dev/null || true").Run(); err != nil {
+		log.Printf("stopKindleFramework: %v", err)
+	}
+}
+
+// RestoreKindleFramework restarts the Kindle's lab126 launcher/UI. Call on exit.
+func RestoreKindleFramework() {
+	if err := exec.Command("sh", "-c", "start lab126_gui 2>/dev/null || /etc/init.d/framework start 2>/dev/null || true").Run(); err != nil {
+		log.Printf("RestoreKindleFramework: %v", err)
+	}
+}
+
 func NewDashboard(options DashboardOptions) *Dashboard {
+	stopKindleFramework()
 	C.w_init()
 	C.gtk_init(nil, nil)
 	d := &Dashboard{options: options, brightnessMax: readMaxBrightness(), hassLightButtons: map[string]*C.GtkWidget{}, hassLightNames: map[string]string{}}
@@ -654,6 +676,16 @@ func NewDashboard(options DashboardOptions) *Dashboard {
 	C.w_pack_end(nb, d.nowPlayingStatus, 0, 0, 0)
 	d.nowBar = nb
 	C.w_pack(bottomRow, nb, 1, 1, 0)
+
+	// ── Media transport (persistent) ──
+	const transportSize = 32
+	tb := C.w_hbox(0, 4)
+	C.w_border(tb, 4)
+	C.w_pack(tb, d.newIconButton("prev_track", transportSize), 0, 0, 0)
+	d.pcPlayPauseBtn = d.newIconButton("play_pause", transportSize)
+	C.w_pack(tb, d.pcPlayPauseBtn, 0, 0, 0)
+	C.w_pack(tb, d.newIconButton("next_track", transportSize), 0, 0, 0)
+	C.w_pack(bottomRow, tb, 0, 0, 0)
 
 	C.w_pack(root, bottomRow, 0, 0, 0)
 
@@ -976,32 +1008,27 @@ func buildLauncherView(d *Dashboard) *C.GtkWidget {
 	vb := C.w_vbox(0, 0)
 	C.w_border(vb, 10)
 
-	// ── 4×3 grid that grows to fill available X and Y ──
-	grid := C.w_table(4, 3)
+	// ── 3×3 grid of 50×50 icon buttons that grows to fill available X and Y ──
+	const iconSize = 100
+	grid := C.w_table(3, 3)
 	C.w_table_spacing(grid, 10, 10)
 
-	// Row 0: Media transport
-	C.w_table_put(grid, d.newMacroButton("Prev", "prev_track", 0), 0, 1, 0, 1)
-	d.pcPlayPauseBtn = d.newMacroButton("Play", "play_pause", 0)
-	C.w_table_put(grid, d.pcPlayPauseBtn, 1, 2, 0, 1)
-	C.w_table_put(grid, d.newMacroButton("Next", "next_track", 0), 2, 3, 0, 1)
+	// Row 0: Toggles & status
+	d.pcModeBtn = d.newIconButton("pc_mode_toggle", iconSize)
+	C.w_table_put_center(grid, d.pcModeBtn, 0, 1, 0, 1)
+	C.w_table_put_center(grid, d.newIconButton("mute_mic", iconSize), 1, 2, 0, 1)
+	d.pcMonitorBtn = d.newIconButton("monitor_toggle", iconSize)
+	C.w_table_put_center(grid, d.pcMonitorBtn, 2, 3, 0, 1)
 
-	// Row 1: Toggles & status
-	d.pcModeBtn = d.newMacroButton("Power Mode", "pc_mode_toggle", 0)
-	C.w_table_put(grid, d.pcModeBtn, 0, 1, 1, 2)
-	C.w_table_put(grid, d.newMacroButton("Mute Mic", "mute_mic", 0), 1, 2, 1, 2)
-	d.pcMonitorBtn = d.newMacroButton("Monitors", "monitor_toggle", 0)
-	C.w_table_put(grid, d.pcMonitorBtn, 2, 3, 1, 2)
+	// Row 1: App launches
+	C.w_table_put_center(grid, d.newIconButton("launch_chrome", iconSize), 0, 1, 1, 2)
+	C.w_table_put_center(grid, d.newIconButton("launch_mail", iconSize), 1, 2, 1, 2)
+	C.w_table_put_center(grid, d.newIconButton("sleep", iconSize), 2, 3, 1, 2)
 
-	// Row 2: App launches
-	C.w_table_put(grid, d.newMacroButton("Chrome", "launch_chrome", 0), 0, 1, 2, 3)
-	C.w_table_put(grid, d.newMacroButton("Mail", "launch_mail", 0), 1, 2, 2, 3)
-	C.w_table_put(grid, d.newMacroButton("Sleep", "sleep", 0), 2, 3, 2, 3)
-
-	// Row 3: System
-	C.w_table_put(grid, d.newMacroButton("Restart", "restart", 0), 0, 1, 3, 4)
-	C.w_table_put(grid, d.newMacroButton("Fortnite", "launch_fortnite", 0), 1, 2, 3, 4)
-	C.w_table_put(grid, d.newMacroButton("Shutdown", "shutdown", 0), 2, 3, 3, 4)
+	// Row 2: System
+	C.w_table_put_center(grid, d.newIconButton("restart", iconSize), 0, 1, 2, 3)
+	C.w_table_put_center(grid, d.newIconButton("launch_fortnite", iconSize), 1, 2, 2, 3)
+	C.w_table_put_center(grid, d.newIconButton("shutdown", iconSize), 2, 3, 2, 3)
 
 	C.w_pack(vb, grid, 1, 1, 0)
 	d.SetPCConnectionStatus(map[bool]string{true: "Disconnected", false: "Not configured"}[d.options.PCEnabled])
@@ -1094,9 +1121,19 @@ func (d *Dashboard) newMacroButton(label, action string, width int) *C.GtkWidget
 	return btn
 }
 
-// macroSquare creates a square macro button with fixed size, centered in its table cell.
-func (d *Dashboard) macroSquare(label, action string, size int) *C.GtkWidget {
-	btn := d.newMacroButton(label, action, size)
+// newIconButton creates an icon-only macro button, fixed at size×size.
+func (d *Dashboard) newIconButton(action string, size int) *C.GtkWidget {
+	mediaBtnName := C.CString(btnNameMedia)
+	iconCS := C.CString(action)
+	btn := C.w_btn_icon(iconCS, mediaBtnName)
+	C.free(unsafe.Pointer(mediaBtnName))
+	C.free(unsafe.Pointer(iconCS))
+	as := C.CString(action)
+	C.w_bind_macro(btn, as)
+	C.free(unsafe.Pointer(as))
+	if size > 0 {
+		C.w_size(btn, C.int(size), C.int(size))
+	}
 	return btn
 }
 
@@ -1135,25 +1172,23 @@ func (d *Dashboard) UpdatePCStatus(status PCStatus) {
 			setMarkup(d.pcTrackArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 40))))
 		}
 		if d.pcModeBtn != nil {
-			label := "Power Mode"
+			icon := "pc_mode_save"
 			if strings.EqualFold(status.GamingMode, "power") {
-				label = "Save Mode"
+				icon = "pc_mode_power"
 			}
-			setButtonLabel(d.pcModeBtn, label)
+			setButtonIcon(d.pcModeBtn, icon)
 		}
 		if d.pcMonitorBtn != nil {
-			label := "Monitors [OFF]"
+			icon := "monitor_off"
 			if status.MonitorOn {
-				label = "Monitors [ON]"
+				icon = "monitor_on"
 			}
-			setButtonLabel(d.pcMonitorBtn, label)
+			setButtonIcon(d.pcMonitorBtn, icon)
 		}
 		if d.pcPlayPauseBtn != nil {
 			if strings.EqualFold(status.Status, "playing") {
-				setButtonLabel(d.pcPlayPauseBtn, "Pause")
 				setButtonIcon(d.pcPlayPauseBtn, "pause")
 			} else {
-				setButtonLabel(d.pcPlayPauseBtn, "Play")
 				setButtonIcon(d.pcPlayPauseBtn, "play_pause")
 			}
 		}
