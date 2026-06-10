@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -55,6 +56,8 @@ func WatchBatteryCapacity(ctx context.Context, callback func(string)) {
 
 	events := make([]unix.EpollEvent, 1)
 	buf := make([]byte, 16)
+	lastRead := time.Now()
+	pollInterval := 2 * time.Minute
 	for {
 		select {
 		case <-ctx.Done():
@@ -70,7 +73,8 @@ func WatchBatteryCapacity(ctx context.Context, callback func(string)) {
 			}
 
 			if n > 0 {
-				// Seek to beginning and read to clear the POLLPRI condition
+				// POLLPRI fired — the kernel says capacity changed.
+				// Seek to beginning and read to clear the POLLPRI condition.
 				nRead, err := unix.Pread(fd, buf, 0)
 				if err != nil {
 					fmt.Printf("failed to read battery capacity: %v\n", err)
@@ -78,6 +82,13 @@ func WatchBatteryCapacity(ctx context.Context, callback func(string)) {
 				}
 				val := strings.TrimSpace(string(buf[:nRead]))
 				callback(val)
+				lastRead = time.Now()
+			} else if time.Since(lastRead) >= pollInterval {
+				// Fallback: the bd71827 driver may not fire sysfs_notify() on
+				// capacity changes, so POLLPRI never arrives. Read periodically.
+				val := readBatteryCapacity()
+				callback(val)
+				lastRead = time.Now()
 			}
 		}
 	}
