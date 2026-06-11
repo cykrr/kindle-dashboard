@@ -65,14 +65,19 @@ func setWakeAlarm(d time.Duration) error {
 	if err := os.WriteFile(wakeAlarmPath, []byte("0"), 0644); err != nil {
 		return fmt.Errorf("clear wakealarm: %w", err)
 	}
-	secs := int(d.Round(time.Second) / time.Second)
-	if secs < 1 {
-		secs = 1
-	}
+	secs := wakeAlarmSeconds(d)
 	if err := os.WriteFile(wakeAlarmPath, []byte(fmt.Sprintf("+%d", secs)), 0644); err != nil {
 		return fmt.Errorf("set wakealarm: %w", err)
 	}
 	return nil
+}
+
+func wakeAlarmSeconds(d time.Duration) int {
+	secs := int((d + time.Second - time.Nanosecond) / time.Second)
+	if secs < 1 {
+		secs = 1
+	}
+	return secs
 }
 
 // suspendToRAM suspends the device to RAM. Returns once the device resumes.
@@ -143,10 +148,11 @@ func runSuspendCycle(d *Dashboard) {
 
 		preSuspendBrightness := readBrightness()
 
-		scheduledSleep := wait + 2*time.Second
-		scheduledWakeAt := time.Now().Add(scheduledSleep).Round(0)
-		log.Printf("suspend: suspending for %v (wakealarm +%v, scheduled_wake=%s)", wait, scheduledSleep, scheduledWakeAt.Format(time.RFC3339Nano))
-		if err := setWakeAlarm(scheduledSleep); err != nil {
+		wakeAlarmDelay := time.Duration(wakeAlarmSeconds(wait)) * time.Second
+		scheduledWakeAt := time.Now().Add(wakeAlarmDelay).Round(0)
+		resumedFromSuspend := false
+		log.Printf("suspend: suspending for %v (wakealarm +%v, scheduled_wake=%s)", wait, wakeAlarmDelay, scheduledWakeAt.Format(time.RFC3339Nano))
+		if err := setWakeAlarm(wakeAlarmDelay); err != nil {
 			log.Printf("suspend: %v — staying awake this cycle", err)
 			time.Sleep(wait)
 		} else {
@@ -154,6 +160,8 @@ func runSuspendCycle(d *Dashboard) {
 				log.Printf("suspend: %v — staying awake this cycle", err)
 				time.Sleep(wait)
 			} else {
+				resumedFromSuspend = true
+
 				// The backlight driver may reset/restore brightness on resume -
 				// force it back to the pre-suspend value so the frontlight
 				// doesn't flash on.
@@ -169,13 +177,6 @@ func runSuspendCycle(d *Dashboard) {
 					log.Printf("suspend: early wake (resumed=%s scheduled_wake=%s margin=%v) - button-wake grace %v", resumedAt.Format(time.RFC3339Nano), scheduledWakeAt.Format(time.RFC3339Nano), earlyWakeMargin, buttonWakeGrace)
 					buttonWakeDeadline.Store(time.Now().Add(buttonWakeGrace).UnixNano())
 				}
-
-				// Resume happens asynchronously (WiFi firmware reload, driver
-				// reinit) - give the device a moment to settle, then poll for
-				// connectivity before doing any work, or it can hang.
-				time.Sleep(wakeGraceMin)
-				log.Printf("suspend: resumed, waiting up to %v for network", wakeGraceMax-wakeGraceMin)
-				waitForNetwork(wakeGraceMax - wakeGraceMin)
 			}
 		}
 
@@ -183,7 +184,18 @@ func runSuspendCycle(d *Dashboard) {
 		// status polling shouldn't flash the frontlight on.
 		suppressBrightnessSync.Store(true)
 
+		// Redraw immediately on wake so the minute changes on-screen around :00.
+		// WiFi/HA polling can wait for the post-resume settle window below.
 		d.RefreshVisibleView(time.Now())
+
+		if resumedFromSuspend {
+			// Resume happens asynchronously (WiFi firmware reload, driver
+			// reinit) - give the device a moment to settle before network work,
+			// or it can hang.
+			time.Sleep(wakeGraceMin)
+			log.Printf("suspend: resumed, waiting up to %v for network", wakeGraceMax-wakeGraceMin)
+			waitForNetwork(wakeGraceMax - wakeGraceMin)
+		}
 
 		if hassClient != nil {
 			err := hassClient.fetchAll()
