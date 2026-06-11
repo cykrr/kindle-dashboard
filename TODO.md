@@ -10,9 +10,9 @@
    - [ ] Remove remaining personal deployment defaults such as Kindle IPs and SSH env vars from helper scripts.
 
 2. Debug flag / logging cleanup
-   - Add a `-debug` flag or config option.
-   - Gate noisy logs such as per-clock-redraw timing behind debug mode.
-   - Keep important operational logs: launch, suspend/wake, early wake, errors.
+   - [x] Add a `-debug` flag or config option.
+   - [x] Gate noisy logs such as per-clock-redraw timing behind debug mode.
+   - [x] Keep important operational logs: launch, suspend/wake, early wake, errors.
 
 3. Button confirmation support
    - Add `needsConfirmation` / `needs_confirmation` to launcher button config.

@@ -48,6 +48,8 @@ Useful Kindle-side commands:
 tail -f /tmp/dashboard-native.log                # dashboard logs
 ```
 
+Add `-debug` to the dashboard command line for verbose UI timing logs.
+
 ## Configuration
 
 The dashboard loads config from, in order:

@@ -14,7 +14,9 @@ import (
 func main() {
 	hwLandscape := flag.Bool("hw-landscape", false, "Ask Kindle window manager for hardware landscape orientation")
 	suspendCycle := flag.Bool("suspend-cycle", false, "Suspend to RAM each minute, waking via RTC alarm (experimental power saving)")
+	debug := flag.Bool("debug", false, "Enable verbose dashboard debug logging")
 	flag.Parse()
+	setDebugLogging(*debug)
 
 	// Restore the Kindle's launcher UI on exit, however we exit.
 	defer RestoreKindleFramework()

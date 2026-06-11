@@ -408,7 +408,6 @@ static void w_override(void) {
 import "C"
 import (
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -946,7 +945,7 @@ func (d *Dashboard) refreshVisibleViewOnUI(now time.Time) {
 }
 
 func (d *Dashboard) updateClock(now time.Time) {
-	log.Printf("ui: redrawing clock display_time=%s actual_time=%s view=%d", now.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano), d.currentView)
+	debugLogf("ui: redrawing clock display_time=%s actual_time=%s view=%d", now.Format(time.RFC3339Nano), time.Now().Format(time.RFC3339Nano), d.currentView)
 
 	greetingFont := "10"
 	clockFont := "66"
