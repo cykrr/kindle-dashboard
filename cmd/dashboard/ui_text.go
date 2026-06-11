@@ -37,7 +37,7 @@ func agendaDayHeader(day string, itemMax int) string {
 	if lineLen > 28 {
 		lineLen = 28
 	}
-	return day + " " + strings.Repeat("─", lineLen)
+	return fmt.Sprintf("<span foreground='#777777'>%s %s</span>", esc(day), strings.Repeat("─", lineLen))
 }
 
 func agendaWeekSeparator(itemMax int) string {
@@ -48,7 +48,7 @@ func agendaWeekSeparator(itemMax int) string {
 	if lineLen > 34 {
 		lineLen = 34
 	}
-	return strings.Repeat("─", lineLen)
+	return fmt.Sprintf("<span foreground='#000000' weight='bold'>%s</span>", strings.Repeat("─", lineLen))
 }
 
 func agendaWeekKey(t time.Time) string {
@@ -72,7 +72,7 @@ func agendaDisplayRows(a AgendaData, itemMax int) []string {
 		if e.Time != "" {
 			line = e.Time + " " + e.Title
 		}
-		line = " " + shorten(line, itemMax)
+		line = " " + esc(shorten(line, itemMax))
 		if e.Day != "" && e.Day != lastDay {
 			line = agendaDayHeader(e.Day, itemMax) + "\n" + line
 			lastDay = e.Day

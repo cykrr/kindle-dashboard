@@ -1434,7 +1434,7 @@ func (d *Dashboard) updateAgendaWidgets(summaryLabel *C.GtkWidget, itemLabels []
 		if i < len(rows) {
 			text = rows[i]
 		}
-		setMarkup(lbl, fmt.Sprintf("<span font_desc='9'>%s</span>", esc(text)))
+		setMarkup(lbl, fmt.Sprintf("<span font_desc='9'>%s</span>", text))
 	}
 }
 

@@ -62,8 +62,8 @@ func TestAgendaDisplayRowsGroupsByDay(t *testing.T) {
 	}}
 	rows := agendaDisplayRows(agenda, 80)
 	want := []string{
-		"Monday " + strings.Repeat("─", 28) + "\n 19.00 Take dog to vet",
-		"Wednesday " + strings.Repeat("─", 28) + "\n 12.00 Dentist appointment",
+		"<span foreground='#777777'>Monday " + strings.Repeat("─", 28) + "</span>\n 19.00 Take dog to vet",
+		"<span foreground='#777777'>Wednesday " + strings.Repeat("─", 28) + "</span>\n 12.00 Dentist appointment",
 	}
 	if len(rows) != len(want) {
 		t.Fatalf("rows len = %d; want %d: %#v", len(rows), len(want), rows)
@@ -84,7 +84,7 @@ func TestAgendaDisplayRowsSeparatesWeeks(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("rows len = %d; want 2", len(rows))
 	}
-	wantPrefix := agendaWeekSeparator(80) + "\nMonday "
+	wantPrefix := agendaWeekSeparator(80) + "\n<span foreground='#777777'>Monday "
 	if !strings.HasPrefix(rows[1], wantPrefix) {
 		t.Fatalf("next week row = %q; want prefix %q", rows[1], wantPrefix)
 	}
