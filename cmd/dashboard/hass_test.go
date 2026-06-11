@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPrettyEntityName(t *testing.T) {
@@ -49,15 +50,15 @@ func TestParseCalendarDataSortsAndLimits(t *testing.T) {
 	if agenda.Events[0].Title != "All Day" {
 		t.Fatalf("first event = %q; want All Day", agenda.Events[0].Title)
 	}
-	if agenda.Events[1].Title != "Early" || agenda.Events[1].Time != "08.00" || agenda.Events[1].Day == "" {
-		t.Fatalf("second event = %+v; want Early at 08.00 with day", agenda.Events[1])
+	if agenda.Events[1].Title != "Early" || agenda.Events[1].Time != "08.00" || agenda.Events[1].Day == "" || agenda.Events[1].WeekKey == "" {
+		t.Fatalf("second event = %+v; want Early at 08.00 with day/week", agenda.Events[1])
 	}
 }
 
 func TestAgendaDisplayRowsGroupsByDay(t *testing.T) {
 	agenda := AgendaData{Events: []AgendaEvent{
-		{Day: "Monday", Time: "19.00", Title: "Take dog to vet"},
-		{Day: "Wednesday", Time: "12.00", Title: "Dentist appointment"},
+		{Day: "Monday", Time: "19.00", Title: "Take dog to vet", WeekKey: "2026-W24"},
+		{Day: "Wednesday", Time: "12.00", Title: "Dentist appointment", WeekKey: "2026-W24"},
 	}}
 	rows := agendaDisplayRows(agenda, 80)
 	want := []string{
@@ -71,6 +72,28 @@ func TestAgendaDisplayRowsGroupsByDay(t *testing.T) {
 		if rows[i] != want[i] {
 			t.Fatalf("row %d = %q; want %q", i, rows[i], want[i])
 		}
+	}
+}
+
+func TestAgendaDisplayRowsSeparatesWeeks(t *testing.T) {
+	agenda := AgendaData{Events: []AgendaEvent{
+		{Day: "Sunday", Time: "10.00", Title: "This week", sortAt: time.Date(2026, 6, 14, 10, 0, 0, 0, time.Local)},
+		{Day: "Monday", Time: "09.00", Title: "Next week", sortAt: time.Date(2026, 6, 15, 9, 0, 0, 0, time.Local)},
+	}}
+	rows := agendaDisplayRows(agenda, 80)
+	if len(rows) != 2 {
+		t.Fatalf("rows len = %d; want 2", len(rows))
+	}
+	wantPrefix := agendaWeekSeparator(80) + "\nMonday "
+	if !strings.HasPrefix(rows[1], wantPrefix) {
+		t.Fatalf("next week row = %q; want prefix %q", rows[1], wantPrefix)
+	}
+}
+
+func TestAgendaWeekKey(t *testing.T) {
+	got := agendaWeekKey(time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC))
+	if got != "2026-W25" {
+		t.Fatalf("agendaWeekKey = %q; want 2026-W25", got)
 	}
 }
 

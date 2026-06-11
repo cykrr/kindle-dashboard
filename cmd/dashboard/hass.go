@@ -67,11 +67,12 @@ type AgendaData struct {
 }
 
 type AgendaEvent struct {
-	Day    string
-	Time   string
-	Title  string
-	Detail string
-	sortAt time.Time
+	Day     string
+	Time    string
+	Title   string
+	Detail  string
+	WeekKey string
+	sortAt  time.Time
 }
 
 type LightData struct {
@@ -458,9 +459,11 @@ func parseCalendarData(result interface{}) AgendaData {
 			start, allDay, ok := parseEventStart(evt)
 			event := AgendaEvent{Title: title, Detail: fallback(attrString(evt, "location"), attrString(evt, "description"), entity)}
 			if ok {
-				event.sortAt = start
-				event.Day = start.Local().Format("Monday")
-				event.Time = formatAgendaEventTime(start, allDay)
+				localStart := start.Local()
+				event.sortAt = localStart
+				event.Day = localStart.Format("Monday")
+				event.WeekKey = agendaWeekKey(localStart)
+				event.Time = formatAgendaEventTime(localStart, allDay)
 			}
 			events = append(events, event)
 		}

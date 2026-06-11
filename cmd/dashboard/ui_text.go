@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"strings"
+	"time"
 )
 
 func lightButtonLabel(name, state string) string {
@@ -39,10 +40,34 @@ func agendaDayHeader(day string, itemMax int) string {
 	return day + " " + strings.Repeat("─", lineLen)
 }
 
+func agendaWeekSeparator(itemMax int) string {
+	lineLen := itemMax
+	if lineLen < 12 {
+		lineLen = 12
+	}
+	if lineLen > 34 {
+		lineLen = 34
+	}
+	return strings.Repeat("─", lineLen)
+}
+
+func agendaWeekKey(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	year, week := t.ISOWeek()
+	return fmt.Sprintf("%04d-W%02d", year, week)
+}
+
 func agendaDisplayRows(a AgendaData, itemMax int) []string {
 	rows := make([]string, 0, len(a.Events))
 	lastDay := ""
+	lastWeek := ""
 	for _, e := range a.Events {
+		week := e.WeekKey
+		if week == "" {
+			week = agendaWeekKey(e.sortAt)
+		}
 		line := e.Title
 		if e.Time != "" {
 			line = e.Time + " " + e.Title
@@ -51,6 +76,12 @@ func agendaDisplayRows(a AgendaData, itemMax int) []string {
 		if e.Day != "" && e.Day != lastDay {
 			line = agendaDayHeader(e.Day, itemMax) + "\n" + line
 			lastDay = e.Day
+		}
+		if week != "" && lastWeek != "" && week != lastWeek {
+			line = agendaWeekSeparator(itemMax) + "\n" + line
+		}
+		if week != "" {
+			lastWeek = week
 		}
 		rows = append(rows, line)
 	}
