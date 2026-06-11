@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestPrettyEntityName(t *testing.T) {
 	got := prettyEntityName("light.office_lamp")
@@ -58,8 +61,8 @@ func TestAgendaDisplayRowsGroupsByDay(t *testing.T) {
 	}}
 	rows := agendaDisplayRows(agenda, 80)
 	want := []string{
-		"Monday ---\n 19.00 Take dog to vet",
-		"Wednesday ---\n 12.00 Dentist appointment",
+		"Monday " + strings.Repeat("─", 28) + "\n 19.00 Take dog to vet",
+		"Wednesday " + strings.Repeat("─", 28) + "\n 12.00 Dentist appointment",
 	}
 	if len(rows) != len(want) {
 		t.Fatalf("rows len = %d; want %d: %#v", len(rows), len(want), rows)
