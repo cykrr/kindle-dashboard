@@ -353,6 +353,9 @@ func (h *HassClient) handleState(st HassState) {
 }
 
 func (h *HassClient) handleBrightnessState(st HassState) {
+	if suppressBrightnessSync.Load() {
+		return
+	}
 	percent, ok := brightnessPercentFromState(st)
 	if !ok || h.dash == nil {
 		return

@@ -496,6 +496,7 @@ func onQuitClicked() { C.gtk_main_quit() }
 
 //export onSwipeStart
 func onSwipeStart(x, y C.double) {
+	markActivity()
 	if dash == nil {
 		return
 	}
@@ -524,6 +525,7 @@ func onSwipeEnd(x, y C.double) {
 
 //export onToggleEntityClicked
 func onToggleEntityClicked(entity *C.char) {
+	markActivity()
 	if hassClient == nil || entity == nil {
 		return
 	}
@@ -532,6 +534,7 @@ func onToggleEntityClicked(entity *C.char) {
 
 //export onMacroActionClicked
 func onMacroActionClicked(action *C.char) {
+	markActivity()
 	if pcMacroClient == nil || action == nil {
 		return
 	}
@@ -881,6 +884,7 @@ func (d *Dashboard) agendaCard() *C.GtkWidget {
 }
 
 func (d *Dashboard) showView(idx int) {
+	markActivity()
 	if idx < 0 {
 		idx = 0
 	}
