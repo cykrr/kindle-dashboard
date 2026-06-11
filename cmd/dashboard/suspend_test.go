@@ -24,6 +24,15 @@ func TestWakeAlarmSecondsCeils(t *testing.T) {
 	}
 }
 
+func TestRememberBrightness(t *testing.T) {
+	if got := rememberBrightness(120, 50); got != 120 {
+		t.Fatalf("rememberBrightness should prefer current nonzero brightness, got %d", got)
+	}
+	if got := rememberBrightness(0, 50); got != 50 {
+		t.Fatalf("rememberBrightness should preserve saved brightness while dimmed, got %d", got)
+	}
+}
+
 func TestIsEarlyWakeWall(t *testing.T) {
 	scheduled := time.Date(2026, 6, 11, 11, 9, 2, 0, time.UTC)
 

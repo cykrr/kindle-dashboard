@@ -103,11 +103,19 @@ func isEarlyWakeWall(resumedAt, scheduledWakeAt time.Time, margin time.Duration)
 	return resumedAt.Before(scheduledWakeAt.Add(-margin))
 }
 
+func rememberBrightness(current, saved int) int {
+	if current > 0 {
+		return current
+	}
+	return saved
+}
+
 // runSuspendCycle suspends to RAM between minute boundaries, waking via RTC
 // alarm at (or just after) each wall-clock minute to refresh the clock and
 // poll HA/PC status. If the wakealarm can't be set, it stays awake for that
 // cycle instead of suspending — never suspend without a confirmed wake source.
 func runSuspendCycle(d *Dashboard) {
+	savedBrightness := readBrightness()
 	for {
 		if idle := timeSinceActivity(); idle < activityGracePeriod {
 			log.Printf("suspend: deferring, idle=%v < %v", idle, activityGracePeriod)
@@ -146,7 +154,7 @@ func runSuspendCycle(d *Dashboard) {
 			wait += time.Minute
 		}
 
-		preSuspendBrightness := readBrightness()
+		savedBrightness = rememberBrightness(readBrightness(), savedBrightness)
 
 		wakeAlarmDelay := time.Duration(wakeAlarmSeconds(wait)) * time.Second
 		scheduledWakeAt := time.Now().Add(wakeAlarmDelay).Round(0)
@@ -156,16 +164,14 @@ func runSuspendCycle(d *Dashboard) {
 			log.Printf("suspend: %v — staying awake this cycle", err)
 			time.Sleep(wait)
 		} else {
+			log.Printf("suspend: dimming frontlight for power-save wake (saved_brightness=%d)", savedBrightness)
+			writeBrightness(0)
 			if err := suspendToRAM(); err != nil {
+				writeBrightness(savedBrightness)
 				log.Printf("suspend: %v — staying awake this cycle", err)
 				time.Sleep(wait)
 			} else {
 				resumedFromSuspend = true
-
-				// The backlight driver may reset/restore brightness on resume -
-				// force it back to the pre-suspend value so the frontlight
-				// doesn't flash on.
-				writeBrightness(preSuspendBrightness)
 
 				// If we resumed well before the scheduled wakealarm, this was
 				// a manual (power button) wake - give the user a window to
@@ -174,8 +180,12 @@ func runSuspendCycle(d *Dashboard) {
 				// time.Since(suspendStart) makes scheduled RTC wakes look early.
 				resumedAt := time.Now().Round(0)
 				if isEarlyWakeWall(resumedAt, scheduledWakeAt, earlyWakeMargin) {
-					log.Printf("suspend: early wake (resumed=%s scheduled_wake=%s margin=%v) - button-wake grace %v", resumedAt.Format(time.RFC3339Nano), scheduledWakeAt.Format(time.RFC3339Nano), earlyWakeMargin, buttonWakeGrace)
+					log.Printf("suspend: early wake (resumed=%s scheduled_wake=%s margin=%v) - restoring brightness %d and starting button-wake grace %v", resumedAt.Format(time.RFC3339Nano), scheduledWakeAt.Format(time.RFC3339Nano), earlyWakeMargin, savedBrightness, buttonWakeGrace)
+					writeBrightness(savedBrightness)
+					d.UpdateBrightnessValue(savedBrightness)
 					buttonWakeDeadline.Store(time.Now().Add(buttonWakeGrace).UnixNano())
+				} else {
+					log.Printf("suspend: rtc wake - keeping frontlight off")
 				}
 			}
 		}
