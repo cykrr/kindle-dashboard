@@ -27,3 +27,21 @@ func shorten(s string, max int) string {
 	}
 	return string(r[:max-1]) + "..."
 }
+
+func agendaDisplayRows(a AgendaData, itemMax int) []string {
+	rows := make([]string, 0, len(a.Events))
+	lastDay := ""
+	for _, e := range a.Events {
+		line := e.Title
+		if e.Time != "" {
+			line = e.Time + " " + e.Title
+		}
+		line = " " + shorten(line, itemMax)
+		if e.Day != "" && e.Day != lastDay {
+			line = e.Day + " ---\n" + line
+			lastDay = e.Day
+		}
+		rows = append(rows, line)
+	}
+	return rows
+}

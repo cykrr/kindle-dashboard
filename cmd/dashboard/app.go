@@ -1428,17 +1428,13 @@ func (d *Dashboard) updateAgendaWidgets(summaryLabel *C.GtkWidget, itemLabels []
 		summary = "No events"
 	}
 	setMarkup(summaryLabel, fmt.Sprintf("<span font_desc='10' color='#626262'>%s</span>", esc(shorten(summary, summaryMax))))
+	rows := agendaDisplayRows(a, itemMax)
 	for i, lbl := range itemLabels {
 		text := ""
-		if i < len(a.Events) {
-			e := a.Events[i]
-			if e.Time != "" {
-				text = e.Time + "  " + e.Title
-			} else {
-				text = e.Title
-			}
+		if i < len(rows) {
+			text = rows[i]
 		}
-		setMarkup(lbl, fmt.Sprintf("<span font_desc='9'>%s</span>", esc(shorten(text, itemMax))))
+		setMarkup(lbl, fmt.Sprintf("<span font_desc='9'>%s</span>", esc(text)))
 	}
 }
 

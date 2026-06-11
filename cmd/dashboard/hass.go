@@ -67,9 +67,11 @@ type AgendaData struct {
 }
 
 type AgendaEvent struct {
+	Day    string
 	Time   string
 	Title  string
 	Detail string
+	sortAt time.Time
 }
 
 type LightData struct {
@@ -453,10 +455,17 @@ func parseCalendarData(result interface{}) AgendaData {
 		for _, rawEvent := range arr {
 			evt, _ := rawEvent.(map[string]interface{})
 			title := fallback(attrString(evt, "summary"), attrString(evt, "title"), "Calendar event")
-			events = append(events, AgendaEvent{Time: formatEventTime(evt), Title: title, Detail: fallback(attrString(evt, "location"), attrString(evt, "description"), entity)})
+			start, allDay, ok := parseEventStart(evt)
+			event := AgendaEvent{Title: title, Detail: fallback(attrString(evt, "location"), attrString(evt, "description"), entity)}
+			if ok {
+				event.sortAt = start
+				event.Day = start.Local().Format("Monday")
+				event.Time = formatAgendaEventTime(start, allDay)
+			}
+			events = append(events, event)
 		}
 	}
-	sort.SliceStable(events, func(i, j int) bool { return events[i].Time < events[j].Time })
+	sort.SliceStable(events, func(i, j int) bool { return events[i].sortAt.Before(events[j].sortAt) })
 	if len(events) > 4 {
 		events = events[:4]
 	}
@@ -467,7 +476,7 @@ func parseCalendarData(result interface{}) AgendaData {
 	return AgendaData{Summary: summary, Events: events}
 }
 
-func formatEventTime(event map[string]interface{}) string {
+func parseEventStart(event map[string]interface{}) (time.Time, bool, bool) {
 	var raw string
 	if start, ok := event["start"].(map[string]interface{}); ok {
 		raw = fallback(attrString(start, "dateTime"), attrString(start, "date"))
@@ -476,18 +485,27 @@ func formatEventTime(event map[string]interface{}) string {
 		raw = fallback(attrString(event, "start_time"), attrString(event, "start"))
 	}
 	if raw == "" {
-		return ""
+		return time.Time{}, false, false
 	}
 	if len(raw) == 10 && raw[4] == '-' && raw[7] == '-' {
-		return "all day"
+		if t, err := time.ParseInLocation("2006-01-02", raw, time.Local); err == nil {
+			return t, true, true
+		}
 	}
 	if t, err := time.Parse(time.RFC3339, raw); err == nil {
-		return t.Local().Format("15:04")
+		return t.Local(), false, true
 	}
-	if t, err := time.Parse("2006-01-02 15:04:05", raw); err == nil {
-		return t.Format("15:04")
+	if t, err := time.ParseInLocation("2006-01-02 15:04:05", raw, time.Local); err == nil {
+		return t, false, true
 	}
-	return ""
+	return time.Time{}, false, false
+}
+
+func formatAgendaEventTime(start time.Time, allDay bool) string {
+	if allDay {
+		return "all day"
+	}
+	return start.Local().Format("15.04")
 }
 
 func brightnessPercentFromState(st HassState) (int, bool) {

@@ -43,8 +43,31 @@ func TestParseCalendarDataSortsAndLimits(t *testing.T) {
 	if len(agenda.Events) != 4 {
 		t.Fatalf("events len = %d; want 4", len(agenda.Events))
 	}
-	if agenda.Events[0].Title != "Early" {
-		t.Fatalf("first event = %q; want Early", agenda.Events[0].Title)
+	if agenda.Events[0].Title != "All Day" {
+		t.Fatalf("first event = %q; want All Day", agenda.Events[0].Title)
+	}
+	if agenda.Events[1].Title != "Early" || agenda.Events[1].Time != "08.00" || agenda.Events[1].Day == "" {
+		t.Fatalf("second event = %+v; want Early at 08.00 with day", agenda.Events[1])
+	}
+}
+
+func TestAgendaDisplayRowsGroupsByDay(t *testing.T) {
+	agenda := AgendaData{Events: []AgendaEvent{
+		{Day: "Monday", Time: "19.00", Title: "Take dog to vet"},
+		{Day: "Wednesday", Time: "12.00", Title: "Dentist appointment"},
+	}}
+	rows := agendaDisplayRows(agenda, 80)
+	want := []string{
+		"Monday ---\n 19.00 Take dog to vet",
+		"Wednesday ---\n 12.00 Dentist appointment",
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("rows len = %d; want %d: %#v", len(rows), len(want), rows)
+	}
+	for i := range want {
+		if rows[i] != want[i] {
+			t.Fatalf("row %d = %q; want %q", i, rows[i], want[i])
+		}
 	}
 }
 
