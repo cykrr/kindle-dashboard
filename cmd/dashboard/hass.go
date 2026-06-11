@@ -18,9 +18,19 @@ import (
 
 const hassPollInterval = 2 * time.Minute
 
+type HassDashboard interface {
+	UpdateMusic(MusicData)
+	UpdateMail(MailData)
+	UpdateLight(LightData)
+	UpdateAgenda(AgendaData)
+	SetConnectionStatus(string)
+	BrightnessPercent(int) int
+	SetBrightnessPercent(int)
+}
+
 type HassClient struct {
 	cfg  HassConfig
-	dash *Dashboard
+	dash HassDashboard
 
 	mu     sync.Mutex
 	http   *http.Client
@@ -68,7 +78,7 @@ type LightData struct {
 	State    string
 }
 
-func NewHassClient(cfg HassConfig, dash *Dashboard) *HassClient {
+func NewHassClient(cfg HassConfig, dash HassDashboard) *HassClient {
 	return &HassClient{
 		cfg:  cfg,
 		dash: dash,

@@ -408,11 +408,9 @@ static void w_override(void) {
 import "C"
 import (
 	"fmt"
-	"html"
-	"log"
-	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 )
@@ -422,6 +420,16 @@ const (
 	btnNameMedia  = "media-btn"
 	btnNameApply  = "apply-btn"
 	btnNameToggle = "toggle-btn"
+)
+
+type ViewID int
+
+const (
+	ViewCalendar ViewID = iota
+	ViewHome
+	ViewLauncher
+	ViewInfo
+	viewCount
 )
 
 // ─── State ───
@@ -584,15 +592,16 @@ type Dashboard struct {
 	pcPlayPauseBtn         *C.GtkWidget
 
 	// Views
-	views       [4]*C.GtkWidget
-	indicators  [4]*C.GtkWidget
-	currentView int
+	views             [viewCount]*C.GtkWidget
+	indicators        [viewCount]*C.GtkWidget
+	currentView       ViewID
+	currentViewAtomic atomic.Int32
 
 	// Now Playing persistent bar
-	nowBar            *C.GtkWidget
-	nowPlayingTrack   *C.GtkWidget
-	nowPlayingArtist  *C.GtkWidget
-	nowPlayingStatus  *C.GtkWidget
+	nowBar           *C.GtkWidget
+	nowPlayingTrack  *C.GtkWidget
+	nowPlayingArtist *C.GtkWidget
+	nowPlayingStatus *C.GtkWidget
 
 	// Info view status widgets
 	infoConnStatus   *C.GtkWidget
@@ -603,21 +612,6 @@ type Dashboard struct {
 	swipeStartX float64
 	swipeStartY float64
 	swipeActive bool
-}
-
-// stopKindleFramework kills the Kindle's lab126 launcher/UI so our window
-// has the screen to itself.
-func stopKindleFramework() {
-	if err := exec.Command("sh", "-c", "stop lab126_gui 2>/dev/null || /etc/init.d/framework stop 2>/dev/null || true").Run(); err != nil {
-		log.Printf("stopKindleFramework: %v", err)
-	}
-}
-
-// RestoreKindleFramework restarts the Kindle's lab126 launcher/UI. Call on exit.
-func RestoreKindleFramework() {
-	if err := exec.Command("sh", "-c", "start lab126_gui 2>/dev/null || /etc/init.d/framework start 2>/dev/null || true").Run(); err != nil {
-		log.Printf("RestoreKindleFramework: %v", err)
-	}
 }
 
 func NewDashboard(options DashboardOptions) *Dashboard {
@@ -636,14 +630,14 @@ func NewDashboard(options DashboardOptions) *Dashboard {
 
 	// View container
 	vc := C.w_vbox(0, 0)
-	d.views[0] = buildCalendarView(d)
-	C.w_pack(vc, d.views[0], 1, 1, 0)
-	d.views[1] = d.buildDashboardView()
-	C.w_pack(vc, d.views[1], 1, 1, 0)
-	d.views[2] = buildLauncherView(d)
-	C.w_pack(vc, d.views[2], 1, 1, 0)
-	d.views[3] = d.buildInfoView()
-	C.w_pack(vc, d.views[3], 1, 1, 0)
+	d.views[ViewCalendar] = buildCalendarView(d)
+	C.w_pack(vc, d.views[ViewCalendar], 1, 1, 0)
+	d.views[ViewHome] = d.buildDashboardView()
+	C.w_pack(vc, d.views[ViewHome], 1, 1, 0)
+	d.views[ViewLauncher] = buildLauncherView(d)
+	C.w_pack(vc, d.views[ViewLauncher], 1, 1, 0)
+	d.views[ViewInfo] = d.buildInfoView()
+	C.w_pack(vc, d.views[ViewInfo], 1, 1, 0)
 	C.w_pack(root, vc, 1, 1, 0)
 
 	// Indicators + Now Playing on same row
@@ -651,7 +645,7 @@ func NewDashboard(options DashboardOptions) *Dashboard {
 
 	dr := C.w_hbox(0, 10)
 	C.w_border(dr, 6)
-	for i := 0; i < 4; i++ {
+	for i := 0; i < int(viewCount); i++ {
 		dot := C.w_lbl()
 		C.w_markup(dot, C.CString("<span font_desc='14'>●</span>"))
 		C.w_fg(dot, C.CString("#d9d1bf"))
@@ -695,7 +689,7 @@ func NewDashboard(options DashboardOptions) *Dashboard {
 
 	C.w_add(d.window, root)
 
-	d.showView(1)
+	d.showView(ViewHome)
 	return d
 }
 
@@ -725,6 +719,13 @@ func (d *Dashboard) runOnUI(fn func()) {
 }
 
 func (d *Dashboard) Loop() { C.gtk_main() }
+
+func (d *Dashboard) CurrentView() ViewID {
+	if d == nil {
+		return ViewHome
+	}
+	return ViewID(d.currentViewAtomic.Load())
+}
 
 // ── Dashboard main view ──
 func (d *Dashboard) buildDashboardView() *C.GtkWidget {
@@ -883,19 +884,20 @@ func (d *Dashboard) agendaCard() *C.GtkWidget {
 	return f
 }
 
-func (d *Dashboard) showView(idx int) {
+func (d *Dashboard) showView(idx ViewID) {
 	markActivity()
 	if idx < 0 {
-		idx = 0
+		idx = ViewCalendar
 	}
-	if idx >= len(d.views) {
-		idx = len(d.views) - 1
+	if idx >= viewCount {
+		idx = ViewInfo
 	}
 	// PC Macro: stop streaming when leaving the launcher view,
 	// start on demand when entering it.
 	prevIdx := d.currentView
 	for i, v := range d.views {
-		if i == idx {
+		viewID := ViewID(i)
+		if viewID == idx {
 			C.w_show(v)
 			setMarkup(d.indicators[i], "<span font_desc='14'>●</span>")
 			setFG(d.indicators[i], "#252525")
@@ -906,12 +908,13 @@ func (d *Dashboard) showView(idx int) {
 		}
 	}
 	d.currentView = idx
+	d.currentViewAtomic.Store(int32(idx))
 
 	// Open the SSE stream on entering the launcher view, close it on leaving.
 	if pcMacroClient != nil {
-		if idx == 2 && prevIdx != 2 {
+		if idx == ViewLauncher && prevIdx != ViewLauncher {
 			pcMacroClient.Touch()
-		} else if prevIdx == 2 && idx != 2 {
+		} else if prevIdx == ViewLauncher && idx != ViewLauncher {
 			pcMacroClient.StopStreaming()
 		}
 	}
@@ -1026,22 +1029,29 @@ func buildLauncherView(d *Dashboard) *C.GtkWidget {
 	grid := C.w_table(3, 3)
 	C.w_table_spacing(grid, 10, 10)
 
-	// Row 0: Toggles & status
-	d.pcModeBtn = d.newIconButton("pc_mode_toggle", iconSize)
-	C.w_table_put_center(grid, d.pcModeBtn, 0, 1, 0, 1)
-	C.w_table_put_center(grid, d.newIconButton("mute_mic", iconSize), 1, 2, 0, 1)
-	d.pcMonitorBtn = d.newIconButton("monitor_toggle", iconSize)
-	C.w_table_put_center(grid, d.pcMonitorBtn, 2, 3, 0, 1)
-
-	// Row 1: App launches
-	C.w_table_put_center(grid, d.newIconButton("launch_chrome", iconSize), 0, 1, 1, 2)
-	C.w_table_put_center(grid, d.newIconButton("launch_mail", iconSize), 1, 2, 1, 2)
-	C.w_table_put_center(grid, d.newIconButton("sleep", iconSize), 2, 3, 1, 2)
-
-	// Row 2: System
-	C.w_table_put_center(grid, d.newIconButton("restart", iconSize), 0, 1, 2, 3)
-	C.w_table_put_center(grid, d.newIconButton("launch_fortnite", iconSize), 1, 2, 2, 3)
-	C.w_table_put_center(grid, d.newIconButton("shutdown", iconSize), 2, 3, 2, 3)
+	buttons := []struct {
+		action string
+		row    int
+		col    int
+		assign func(*C.GtkWidget)
+	}{
+		{action: "pc_mode_toggle", row: 0, col: 0, assign: func(btn *C.GtkWidget) { d.pcModeBtn = btn }},
+		{action: "mute_mic", row: 0, col: 1},
+		{action: "monitor_toggle", row: 0, col: 2, assign: func(btn *C.GtkWidget) { d.pcMonitorBtn = btn }},
+		{action: "launch_chrome", row: 1, col: 0},
+		{action: "launch_mail", row: 1, col: 1},
+		{action: "sleep", row: 1, col: 2},
+		{action: "restart", row: 2, col: 0},
+		{action: "launch_fortnite", row: 2, col: 1},
+		{action: "shutdown", row: 2, col: 2},
+	}
+	for _, spec := range buttons {
+		btn := d.newIconButton(spec.action, iconSize)
+		if spec.assign != nil {
+			spec.assign(btn)
+		}
+		C.w_table_put_center(grid, btn, C.int(spec.col), C.int(spec.col+1), C.int(spec.row), C.int(spec.row+1))
+	}
 
 	C.w_pack(vb, grid, 1, 1, 0)
 	d.SetPCConnectionStatus(map[bool]string{true: "Disconnected", false: "Not configured"}[d.options.PCEnabled])
@@ -1221,7 +1231,7 @@ func (d *Dashboard) updateNowPlayingFromPC(status PCStatus) {
 	} else {
 		setMarkup(d.nowPlayingTrack, fmt.Sprintf("<span font_desc='9' weight='bold'>%s</span>", esc(shorten(track, 60))))
 		setMarkup(d.nowPlayingArtist, fmt.Sprintf("<span font_desc='9' color='#626262'>%s</span>", esc(shorten(artist, 50))))
-			badge := ">"
+		badge := ">"
 		if strings.EqualFold(stat, "paused") {
 			badge = "|"
 		}
@@ -1407,26 +1417,4 @@ func setButtonMarkup(button *C.GtkWidget, markup string) {
 	cs := C.CString(markup)
 	defer C.free(unsafe.Pointer(cs))
 	C.w_btn_markup(button, cs)
-}
-
-func lightButtonLabel(name, state string) string {
-	name = shorten(name, 16)
-	on := strings.EqualFold(strings.TrimSpace(state), "on") || strings.EqualFold(strings.TrimSpace(state), "open")
-	if on {
-		return fmt.Sprintf("<span weight='bold'>● %s</span>", esc(name))
-	}
-	return fmt.Sprintf("<span>○ %s</span>", esc(name))
-}
-
-func esc(s string) string { return html.EscapeString(s) }
-
-func shorten(s string, max int) string {
-	r := []rune(s)
-	if len(r) <= max {
-		return s
-	}
-	if max <= 1 {
-		return "..."
-	}
-	return string(r[:max-1]) + "..."
 }

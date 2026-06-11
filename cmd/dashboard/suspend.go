@@ -25,10 +25,6 @@ const (
 	// touching the screen (or shortly after).
 	activityGracePeriod = 15 * time.Second
 
-	// mainView and pcView are view indices (see app.go's d.views).
-	mainView = 1
-	pcView   = 2
-
 	// earlyWakeMargin: if the device resumes this much earlier than its
 	// scheduled wakealarm, treat it as a manual (power button) wake rather
 	// than the scheduled RTC alarm.
@@ -110,10 +106,11 @@ func runSuspendCycle(d *Dashboard) {
 			continue
 		}
 
+		view := d.CurrentView()
 		if dl := buttonWakeDeadline.Load(); dl != 0 {
 			now := time.Now()
-			if d.currentView == pcView {
-				log.Printf("suspend: button-wake grace, currentView=pcView - kicking +%v", pcViewKick)
+			if view == ViewLauncher {
+				log.Printf("suspend: button-wake grace, currentView=launcher - kicking +%v", pcViewKick)
 				buttonWakeDeadline.Store(now.Add(pcViewKick).UnixNano())
 				time.Sleep(pcViewKick)
 				continue
@@ -125,10 +122,10 @@ func runSuspendCycle(d *Dashboard) {
 			}
 			// Grace expired - clear it and suspend below regardless of view.
 			buttonWakeDeadline.Store(0)
-		} else if d.currentView != mainView {
+		} else if view != ViewHome {
 			// Don't suspend while the user is browsing other views -
 			// just wait and re-check.
-			log.Printf("suspend: deferring, currentView=%d != %d", d.currentView, mainView)
+			log.Printf("suspend: deferring, currentView=%d != %d", view, ViewHome)
 			time.Sleep(2 * time.Second)
 			continue
 		}

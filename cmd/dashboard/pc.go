@@ -24,10 +24,15 @@ type PCStatus struct {
 	Status     string `json:"status"`
 }
 
+type PCDashboard interface {
+	SetPCConnectionStatus(string)
+	UpdatePCStatus(PCStatus)
+}
+
 type PCMacroClient struct {
 	baseURL string
 	apiKey  string
-	dash    *Dashboard
+	dash    PCDashboard
 	http    *http.Client
 	stream  *http.Client
 
@@ -35,13 +40,13 @@ type PCMacroClient struct {
 	lastStatus PCStatus
 
 	// Streaming state
-	streamBody   io.ReadCloser
-	streamCancel context.CancelFunc
+	streamBody    io.ReadCloser
+	streamCancel  context.CancelFunc
 	inactiveTimer *time.Timer
-	streaming    bool
+	streaming     bool
 }
 
-func NewPCMacroClient(cfg HassConfig, dash *Dashboard) *PCMacroClient {
+func NewPCMacroClient(cfg HassConfig, dash PCDashboard) *PCMacroClient {
 	return &PCMacroClient{
 		baseURL: normalizePCMacroURL(cfg.PCMacroURL),
 		apiKey:  strings.TrimSpace(cfg.PCMacroKey),
