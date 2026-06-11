@@ -28,7 +28,7 @@ func main() {
 
 	cfg, cfgErr := LoadHassConfig()
 	pcEnabled := strings.TrimSpace(cfg.PCMacroURL) != "" && strings.TrimSpace(cfg.PCMacroKey) != ""
-	dash = NewDashboard(DashboardOptions{HardwareLandscape: *hwLandscape, HassLightEntities: cfg.LightEntities, PCEnabled: pcEnabled})
+	dash = NewDashboard(DashboardOptions{HardwareLandscape: *hwLandscape, HassLightEntities: cfg.LightEntities, PCEnabled: pcEnabled, LauncherButtons: cfg.LauncherButtons})
 	dash.Show()
 	dash.UpdateClock(time.Now())
 

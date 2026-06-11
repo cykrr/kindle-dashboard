@@ -555,6 +555,7 @@ type DashboardOptions struct {
 	HardwareLandscape bool
 	HassLightEntities []string
 	PCEnabled         bool
+	LauncherButtons   []LauncherButtonConfig
 }
 
 type Dashboard struct {
@@ -1044,39 +1045,67 @@ func buildLauncherView(d *Dashboard) *C.GtkWidget {
 	vb := C.w_vbox(0, 0)
 	C.w_border(vb, 10)
 
-	// ── 3×3 grid of 50×50 icon buttons that grows to fill available X and Y ──
 	const iconSize = 100
-	grid := C.w_table(3, 3)
+	buttons := launcherButtons(d.options.LauncherButtons)
+	rows := (len(buttons) + 2) / 3
+	if rows < 1 {
+		rows = 1
+	}
+	grid := C.w_table(C.int(rows), 3)
 	C.w_table_spacing(grid, 10, 10)
 
-	buttons := []struct {
-		action string
-		row    int
-		col    int
-		assign func(*C.GtkWidget)
-	}{
-		{action: "pc_mode_toggle", row: 0, col: 0, assign: func(btn *C.GtkWidget) { d.pcModeBtn = btn }},
-		{action: "mute_mic", row: 0, col: 1},
-		{action: "monitor_toggle", row: 0, col: 2, assign: func(btn *C.GtkWidget) { d.pcMonitorBtn = btn }},
-		{action: "launch_chrome", row: 1, col: 0},
-		{action: "launch_mail", row: 1, col: 1},
-		{action: "sleep", row: 1, col: 2},
-		{action: "restart", row: 2, col: 0},
-		{action: "launch_fortnite", row: 2, col: 1},
-		{action: "shutdown", row: 2, col: 2},
-	}
-	for _, spec := range buttons {
-		btn := d.newIconButton(spec.action, iconSize)
-		if spec.assign != nil {
-			spec.assign(btn)
-		}
-		C.w_table_put_center(grid, btn, C.int(spec.col), C.int(spec.col+1), C.int(spec.row), C.int(spec.row+1))
+	for i, spec := range buttons {
+		row := i / 3
+		col := i % 3
+		btn := d.newIconButtonWithIcon(spec.Action, launcherButtonIcon(spec), iconSize)
+		d.assignLauncherStatusButton(spec.Action, btn)
+		C.w_table_put_center(grid, btn, C.int(col), C.int(col+1), C.int(row), C.int(row+1))
 	}
 
 	C.w_pack(vb, grid, 1, 1, 0)
 	d.SetPCConnectionStatus(map[bool]string{true: "Disconnected", false: "Not configured"}[d.options.PCEnabled])
 	d.UpdatePCStatus(PCStatus{Status: "Idle"})
 	return vb
+}
+
+func launcherButtons(configured []LauncherButtonConfig) []LauncherButtonConfig {
+	if configured != nil {
+		out := configured[:0]
+		for _, spec := range configured {
+			spec.Action = strings.TrimSpace(spec.Action)
+			if spec.Action != "" {
+				out = append(out, spec)
+			}
+		}
+		return out
+	}
+	return []LauncherButtonConfig{
+		{Action: "pc_mode_toggle"},
+		{Action: "mute_mic"},
+		{Action: "monitor_toggle"},
+		{Action: "launch_chrome"},
+		{Action: "launch_mail"},
+		{Action: "sleep"},
+		{Action: "restart"},
+		{Action: "launch_fortnite"},
+		{Action: "shutdown"},
+	}
+}
+
+func launcherButtonIcon(spec LauncherButtonConfig) string {
+	if strings.TrimSpace(spec.Icon) != "" {
+		return strings.TrimSpace(spec.Icon)
+	}
+	return strings.TrimSpace(spec.Action)
+}
+
+func (d *Dashboard) assignLauncherStatusButton(action string, btn *C.GtkWidget) {
+	switch action {
+	case "pc_mode_toggle":
+		d.pcModeBtn = btn
+	case "monitor_toggle":
+		d.pcMonitorBtn = btn
+	}
 }
 
 func (d *Dashboard) buildInfoView() *C.GtkWidget {
@@ -1166,8 +1195,12 @@ func (d *Dashboard) newMacroButton(label, action string, width int) *C.GtkWidget
 
 // newIconButton creates an icon-only macro button, fixed at size×size.
 func (d *Dashboard) newIconButton(action string, size int) *C.GtkWidget {
+	return d.newIconButtonWithIcon(action, action, size)
+}
+
+func (d *Dashboard) newIconButtonWithIcon(action, icon string, size int) *C.GtkWidget {
 	mediaBtnName := C.CString(btnNameMedia)
-	iconCS := C.CString(action)
+	iconCS := C.CString(icon)
 	btn := C.w_btn_icon(iconCS, mediaBtnName)
 	C.free(unsafe.Pointer(mediaBtnName))
 	C.free(unsafe.Pointer(iconCS))

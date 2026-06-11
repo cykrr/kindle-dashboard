@@ -8,23 +8,30 @@ import (
 	"strings"
 )
 
+type LauncherButtonConfig struct {
+	Action string `json:"action"`
+	Icon   string `json:"icon,omitempty"`
+	Label  string `json:"label,omitempty"`
+}
+
 type HassConfig struct {
-	URL                string   `json:"url"`
-	Token              string   `json:"token"`
-	HassURL            string   `json:"HASS_URL"`
-	HassToken          string   `json:"HASS_TOKEN"`
-	Entity             string   `json:"entity"`
-	MusicEntity        string   `json:"musicEntity"`
-	MailEntity         string   `json:"mailEntity"`
-	MailLabel          string   `json:"mailLabel"`
-	CalendarEntity     string   `json:"calendarEntity"`
-	CalendarEntities   []string `json:"calendarEntities"`
-	LightEntity        string   `json:"lightEntity"`
-	LightEntities      []string `json:"lightEntities"`
-	PCMacroURL         string   `json:"pcMacroUrl"`
-	PCMacroKey         string   `json:"pcMacroKey"`
-	BrightnessEntity   string   `json:"brightnessEntity"`
-	InsecureSkipVerify bool     `json:"insecureSkipVerify"`
+	URL                string                 `json:"url"`
+	Token              string                 `json:"token"`
+	HassURL            string                 `json:"HASS_URL"`
+	HassToken          string                 `json:"HASS_TOKEN"`
+	Entity             string                 `json:"entity"`
+	MusicEntity        string                 `json:"musicEntity"`
+	MailEntity         string                 `json:"mailEntity"`
+	MailLabel          string                 `json:"mailLabel"`
+	CalendarEntity     string                 `json:"calendarEntity"`
+	CalendarEntities   []string               `json:"calendarEntities"`
+	LightEntity        string                 `json:"lightEntity"`
+	LightEntities      []string               `json:"lightEntities"`
+	PCMacroURL         string                 `json:"pcMacroUrl"`
+	PCMacroKey         string                 `json:"pcMacroKey"`
+	BrightnessEntity   string                 `json:"brightnessEntity"`
+	LauncherButtons    []LauncherButtonConfig `json:"launcherButtons"`
+	InsecureSkipVerify bool                   `json:"insecureSkipVerify"`
 }
 
 func (c *HassConfig) UnmarshalJSON(b []byte) error {
@@ -93,17 +100,8 @@ func LoadHassConfig() (HassConfig, error) {
 	if cfg.MusicEntity == "" {
 		cfg.MusicEntity = cfg.Entity
 	}
-	if cfg.MusicEntity == "" {
-		cfg.MusicEntity = "media_player.googlehome1844"
-	}
-	if cfg.MailEntity == "" {
-		cfg.MailEntity = "sensor.imap_me_messages"
-	}
 	if len(cfg.CalendarEntities) == 0 && cfg.CalendarEntity != "" {
 		cfg.CalendarEntities = splitEntities(cfg.CalendarEntity)
-	}
-	if len(cfg.CalendarEntities) == 0 {
-		cfg.CalendarEntities = []string{"calendar.it", "calendar.calendario"}
 	}
 	cfg.CalendarEntities = splitEntities(strings.Join(cfg.CalendarEntities, ","))
 	if len(cfg.LightEntities) == 0 && cfg.LightEntity != "" {
