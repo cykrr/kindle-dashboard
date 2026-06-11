@@ -176,8 +176,7 @@ func runSuspendCycle(d *Dashboard) {
 		// status polling shouldn't flash the frontlight on.
 		suppressBrightnessSync.Store(true)
 
-		d.UpdateClock(time.Now())
-		d.Redraw()
+		d.RefreshVisibleView(time.Now())
 
 		if hassClient != nil {
 			err := hassClient.fetchAll()

@@ -918,12 +918,29 @@ func (d *Dashboard) showView(idx ViewID) {
 			pcMacroClient.StopStreaming()
 		}
 	}
+
+	// View changes are a user-visible screen transition. Refresh the visible
+	// view immediately instead of waiting for the next minute tick / poll cycle.
+	d.refreshVisibleViewOnUI(time.Now())
 }
 
 func (d *Dashboard) UpdateClock(now time.Time) {
 	d.runOnUI(func() {
 		d.updateClock(now)
 	})
+}
+
+func (d *Dashboard) RefreshVisibleView(now time.Time) {
+	d.runOnUI(func() {
+		d.refreshVisibleViewOnUI(now)
+	})
+}
+
+func (d *Dashboard) refreshVisibleViewOnUI(now time.Time) {
+	if d.currentView == ViewHome {
+		d.updateClock(now)
+	}
+	C.w_redraw(d.window)
 }
 
 func (d *Dashboard) updateClock(now time.Time) {
