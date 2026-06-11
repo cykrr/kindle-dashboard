@@ -41,6 +41,14 @@ const (
 	// pcViewKick: while in the PC view during a button-wake grace period,
 	// extend the grace by this much each check instead of expiring it.
 	pcViewKick = 10 * time.Second
+
+	// uiRefreshTimeout is how long the suspend loop waits for queued GTK work
+	// to run before giving up and continuing. It should normally complete fast.
+	uiRefreshTimeout = 5 * time.Second
+
+	// einkRefreshSettle gives the e-ink controller time to finish the visible
+	// refresh before we suspend again, avoiding half-painted/ghosted states.
+	einkRefreshSettle = 2 * time.Second
 )
 
 // lastActivityNano holds the UnixNano timestamp of the last touch/click,
@@ -222,7 +230,9 @@ func runSuspendCycle(d *Dashboard) {
 				time.Sleep(untilRedraw)
 			}
 		}
-		d.RefreshVisibleView(time.Now())
+		if ok := d.RefreshVisibleViewAndWait(time.Now(), uiRefreshTimeout); !ok {
+			log.Printf("suspend: timed out waiting for initial UI refresh")
+		}
 
 		if resumedFromSuspend {
 			// Resume happens asynchronously (WiFi firmware reload, driver
@@ -246,6 +256,15 @@ func runSuspendCycle(d *Dashboard) {
 				log.Printf("pc macro: post-resume refresh: %v", err)
 			}
 		}
+
+		// HA/PC refreshes enqueue GTK work. Drain one final refresh and let the
+		// e-ink controller settle before the next suspend, otherwise the Kindle can
+		// sleep while a track/title/agenda update is visibly mid-refresh.
+		if ok := d.RefreshVisibleViewAndWait(time.Now(), uiRefreshTimeout); !ok {
+			log.Printf("suspend: timed out waiting for final UI refresh")
+		}
+		log.Printf("suspend: settling display for %v before next sleep", einkRefreshSettle)
+		time.Sleep(einkRefreshSettle)
 
 		suppressBrightnessSync.Store(false)
 	}

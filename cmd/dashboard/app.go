@@ -727,6 +727,27 @@ func (d *Dashboard) runOnUI(fn func()) {
 	enqueueUI(fn)
 }
 
+func (d *Dashboard) runOnUIWait(fn func(), timeout time.Duration) bool {
+	if d == nil {
+		return false
+	}
+	done := make(chan struct{})
+	enqueueUI(func() {
+		defer close(done)
+		fn()
+	})
+	if timeout <= 0 {
+		<-done
+		return true
+	}
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
+	}
+}
+
 func (d *Dashboard) Loop() { C.gtk_main() }
 
 func (d *Dashboard) CurrentView() ViewID {
@@ -943,6 +964,12 @@ func (d *Dashboard) RefreshVisibleView(now time.Time) {
 	d.runOnUI(func() {
 		d.refreshVisibleViewOnUI(now)
 	})
+}
+
+func (d *Dashboard) RefreshVisibleViewAndWait(now time.Time, timeout time.Duration) bool {
+	return d.runOnUIWait(func() {
+		d.refreshVisibleViewOnUI(now)
+	}, timeout)
 }
 
 func (d *Dashboard) refreshVisibleViewOnUI(now time.Time) {
