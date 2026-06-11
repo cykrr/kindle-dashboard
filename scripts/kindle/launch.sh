@@ -2,6 +2,7 @@
 set -e
 export DISPLAY=:0
 DASHBOARD_DIR="/mnt/us/documents/kindle-dashboard"
+LOG_FILE="/tmp/dashboard-native.log"
 
 # echo "=== Stopping Kindle GUI ==="
 # trap "" TERM
@@ -21,7 +22,12 @@ killall -9 dashboard-native 2>/dev/null || true
 sleep 2
 
 echo "=== Launching native dashboard ==="
-"$DASHBOARD_DIR/dashboard-native" -hw-landscape -suspend-cycle &
+echo "Logging to $LOG_FILE"
+{
+  echo "=== $(date '+%Y-%m-%dT%H:%M:%S%z') launching dashboard-native ==="
+  "$DASHBOARD_DIR/dashboard-native" -hw-landscape -suspend-cycle
+  echo "=== $(date '+%Y-%m-%dT%H:%M:%S%z') dashboard-native exited: $? ==="
+} >>"$LOG_FILE" 2>&1 &
 DPID=$!
 echo "PID: $DPID"
 
