@@ -255,6 +255,7 @@ static void w_pack_end(GtkWidget *b, GtkWidget *c, gboolean ex, gboolean fi, gui
 static void w_add(GtkWidget *p, GtkWidget *c) { gtk_container_add(GTK_CONTAINER(p), c); }
 static void w_border(GtkWidget *w, guint px)  { gtk_container_set_border_width(GTK_CONTAINER(w), px); }
 static void w_size(GtkWidget *w, gint x, gint y) { gtk_widget_set_size_request(w, x, y); }
+static void w_redraw(GtkWidget *w) { gtk_widget_queue_draw(w); }
 static void w_shadow(GtkWidget *w, GtkShadowType s) { gtk_frame_set_shadow_type(GTK_FRAME(w), s); }
 static void w_table_put(GtkWidget *t, GtkWidget *w, gint l, gint r, gint tp, gint bt) {
 	gtk_table_attach(GTK_TABLE(t), w, l, r, tp, bt, GTK_EXPAND|GTK_FILL, GTK_EXPAND|GTK_FILL, 0, 0);
@@ -703,6 +704,14 @@ func (d *Dashboard) Show() {
 	if !d.options.HardwareLandscape {
 		C.w_override()
 	}
+}
+
+// Redraw forces a full repaint of the window. Used after resuming from
+// suspend, where the e-ink/framebuffer state may be stale.
+func (d *Dashboard) Redraw() {
+	d.runOnUI(func() {
+		C.w_redraw(d.window)
+	})
 }
 
 func (d *Dashboard) runOnUI(fn func()) {

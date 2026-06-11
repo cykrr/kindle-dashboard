@@ -13,6 +13,7 @@ import (
 
 func main() {
 	hwLandscape := flag.Bool("hw-landscape", false, "Ask Kindle window manager for hardware landscape orientation")
+	suspendCycle := flag.Bool("suspend-cycle", false, "Suspend to RAM each minute, waking via RTC alarm (experimental power saving)")
 	flag.Parse()
 
 	// Restore the Kindle's launcher UI on exit, however we exit.
@@ -51,18 +52,24 @@ func main() {
 		dash.SetConnectionStatus("Config Missing")
 	}
 
-	// Clock goroutine — sleeps precisely until the next minute boundary,
-	// waking the CPU only when the UI needs to reflect a new minute.
-	go func() {
-		for {
-			now := time.Now()
-			next := time.Date(now.Year(), now.Month(), now.Day(),
-				now.Hour(), now.Minute()+1, 0, 0, now.Location())
-			timer := time.NewTimer(time.Until(next))
-			<-timer.C
-			dash.UpdateClock(time.Now())
-		}
-	}()
+	if *suspendCycle {
+		// Suspend-to-RAM cycle: handles its own clock/poll refresh on each
+		// RTC wake, replacing the plain clock goroutine below.
+		go runSuspendCycle(dash)
+	} else {
+		// Clock goroutine — sleeps precisely until the next minute boundary,
+		// waking the CPU only when the UI needs to reflect a new minute.
+		go func() {
+			for {
+				now := time.Now()
+				next := time.Date(now.Year(), now.Month(), now.Day(),
+					now.Hour(), now.Minute()+1, 0, 0, now.Location())
+				timer := time.NewTimer(time.Until(next))
+				<-timer.C
+				dash.UpdateClock(time.Now())
+			}
+		}()
+	}
 
 	// Battery event-driven updates — decoupled from the clock loop.
 	// Uses epoll/POLLPRI to wait for kernel sysfs_notify events.

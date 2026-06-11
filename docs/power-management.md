@@ -85,18 +85,49 @@ Options to consider:
    idle/suspend handle it, only intervening to ensure RTC wake for clock
    ticks.
 
-## Recommendation
+## ⚠️ Repeated `mem` suspend cycle — CRASHED THE DEVICE (2026-06-10)
 
-A 60s `mem`-suspend/wake/poll/refresh cycle looks viable: ~2-2.5% duty
-cycle for WiFi reinit, `mem`/`standby` confirmed safe with RTC wakealarm.
+Implemented `-suspend-cycle` (Option A): RTC wakealarm aligned to next
+minute boundary, `echo mem > /sys/power/state`, on wake poll HA/PC +
+redraw + re-suspend, looped forever (`runSuspendCycle` in
+`cmd/dashboard/suspend.go`).
 
-- Align RTC wakealarm to the next wall-clock minute boundary (not a
-  fixed +60s from arbitrary suspend time), matching the existing clock
-  goroutine logic in `main.go` — keeps the displayed clock accurate to
-  the minute without extra wake cycles.
-- Each wake: poll HA/PC status, redraw, set next wakealarm to next
-  minute boundary, suspend (`mem`) again.
-- Drop `wakeUp`/`preventScreenSaver` forcing entirely — they fight the
-  suspend cycle.
-- **Never call `freeze`** — confirmed to crash/hang this hardware with
-  no safe recovery path other than a hard power-button reset.
+- **First cycle worked**: suspended, woke via RTC ~70s later, dashboard
+  process alive, polled HA (failed only because DNS/network wasn't up
+  yet at the exact wake instant).
+- **Second cycle hung the device**: no SSH/route to host for ~5+
+  minutes. `/tmp/dash.log` gone and `dmesg` showed uptime ~171s with
+  `Reboot Reason: PWRON_LONGPRESS` — device required a manual
+  long-press power-button recovery, same as the earlier `freeze`
+  crash.
+
+A single isolated `mem` suspend/resume (manual test earlier) was fine,
+but **looping `mem` suspend every minute crashes this hardware within
+1-2 cycles**. Root cause not isolated (could be the Broadcom WiFi
+driver failing a second firmware reload, RTC alarm re-arm racing with
+`bd71827_rtc_alarm_irq_enable: disable rtc alarm`, or a powerd/cgroup
+interaction with `wakeUp`/`preventScreenSaver` still set).
+
+**Conclusion: do not use repeated `mem`/`standby` suspend cycling on
+this hardware.** `-suspend-cycle` flag is implemented but must stay
+disabled (default `false`) and should not be enabled until the root
+cause is found and fixed in a way that's been validated over many
+cycles unattended.
+
+## Recommendation (revised)
+
+Suspend-cycling (`mem`, `standby`, and `freeze`) are all confirmed to
+hang/crash this hardware when used repeatedly or without extreme care.
+**Option A is not viable as implemented.** Remaining options:
+
+- Stick with the always-awake model but drop `wakeUp`/
+  `preventScreenSaver` and rely on powerd's own idle/dim policies for
+  whatever battery savings are safe — lowest risk, smallest gain.
+- Investigate a lighter-weight idle mechanism that doesn't touch
+  `/sys/power/state` at all (e.g. CPU frequency scaling, just turning
+  off backlight/wifi power-save mode via `iwconfig`/`iw` without full
+  suspend) — untested.
+- If suspend-cycling is revisited, do so only with a hardware watchdog
+  reset path (e.g. external timer that power-cycles the device if SSH
+  is unreachable for >N minutes) so a hang doesn't require physical
+  access — and test for many hours unattended before trusting it.
