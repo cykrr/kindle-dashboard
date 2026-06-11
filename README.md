@@ -84,16 +84,17 @@ Launcher buttons are configurable:
   "launcherButtons": [
     { "action": "mute_mic", "icon": "mute_mic", "label": "Mic" },
     { "action": "launch_chrome", "icon": "launch_chrome", "label": "Browser" },
-    { "action": "sleep", "icon": "sleep", "label": "Sleep" }
+    { "action": "sleep", "icon": "sleep", "label": "Sleep", "needsConfirmation": true }
   ]
 }
 ```
 
 - `action`: command sent to the Windows macro daemon
 - `icon`: icon name drawn by the dashboard; defaults to `action`
-- `label`: reserved/documentary today; launcher buttons are currently icon-only
+- `label`: used in confirmation text; launcher buttons are currently icon-only
+- `needsConfirmation` / `needs_confirmation`: require a second tap within 5 seconds before executing the action
 
-If `launcherButtons` is omitted, the current built-in default launcher is used. Set `launcherButtons: []` for an empty launcher.
+If `launcherButtons` is omitted, the current built-in default launcher is used. Set `launcherButtons: []` for an empty launcher. Built-in defaults require confirmation for `sleep`, `restart`, and `shutdown`.
 
 Known built-in daemon actions include: `mute_mic`, `play_pause`, `prev_track`, `next_track`, `sleep`, `power_mode`, `save_mode`, `pc_mode_toggle`, `monitor_toggle`, `launch_chrome`, `launch_mail`, `launch_fortnite`, `restart`, `shutdown`.
 

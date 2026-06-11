@@ -420,6 +420,8 @@ const (
 	btnNameMedia  = "media-btn"
 	btnNameApply  = "apply-btn"
 	btnNameToggle = "toggle-btn"
+
+	macroConfirmTimeout = 5 * time.Second
 )
 
 type ViewID int
@@ -543,10 +545,10 @@ func onToggleEntityClicked(entity *C.char) {
 //export onMacroActionClicked
 func onMacroActionClicked(action *C.char) {
 	markActivity()
-	if pcMacroClient == nil || action == nil {
+	if dash == nil || action == nil {
 		return
 	}
-	go pcMacroClient.Execute(C.GoString(action))
+	dash.handleMacroAction(C.GoString(action))
 }
 
 // ─── Dashboard ───
@@ -578,6 +580,12 @@ type Dashboard struct {
 	batteryCache     string
 	hassLightButtons map[string]*C.GtkWidget
 	hassLightNames   map[string]string
+
+	// Launcher actions
+	launcherConfirm   map[string]bool
+	launcherLabels    map[string]string
+	pendingMacro      string
+	pendingMacroUntil time.Time
 
 	// Home Assistant cards
 	mailUnread             *C.GtkWidget
@@ -619,7 +627,7 @@ func NewDashboard(options DashboardOptions) *Dashboard {
 	stopKindleFramework()
 	C.w_init()
 	C.gtk_init(nil, nil)
-	d := &Dashboard{options: options, brightnessMax: readMaxBrightness(), hassLightButtons: map[string]*C.GtkWidget{}, hassLightNames: map[string]string{}}
+	d := &Dashboard{options: options, brightnessMax: readMaxBrightness(), hassLightButtons: map[string]*C.GtkWidget{}, hassLightNames: map[string]string{}, launcherConfirm: map[string]bool{}, launcherLabels: map[string]string{}}
 	if d.brightnessMax <= 0 {
 		d.brightnessMax = 2399
 	}
@@ -1056,6 +1064,7 @@ func buildLauncherView(d *Dashboard) *C.GtkWidget {
 	for i, spec := range buttons {
 		row := i / 3
 		col := i % 3
+		d.registerLauncherButton(spec)
 		btn := d.newIconButtonWithIcon(spec.Action, launcherButtonIcon(spec), iconSize)
 		d.assignLauncherStatusButton(spec.Action, btn)
 		C.w_table_put_center(grid, btn, C.int(col), C.int(col+1), C.int(row), C.int(row+1))
@@ -1084,10 +1093,10 @@ func launcherButtons(configured []LauncherButtonConfig) []LauncherButtonConfig {
 		{Action: "monitor_toggle"},
 		{Action: "launch_chrome"},
 		{Action: "launch_mail"},
-		{Action: "sleep"},
-		{Action: "restart"},
+		{Action: "sleep", NeedsConfirmation: true},
+		{Action: "restart", NeedsConfirmation: true},
 		{Action: "launch_fortnite"},
-		{Action: "shutdown"},
+		{Action: "shutdown", NeedsConfirmation: true},
 	}
 }
 
@@ -1105,6 +1114,48 @@ func (d *Dashboard) assignLauncherStatusButton(action string, btn *C.GtkWidget) 
 	case "monitor_toggle":
 		d.pcMonitorBtn = btn
 	}
+}
+
+func (d *Dashboard) registerLauncherButton(spec LauncherButtonConfig) {
+	if d == nil || strings.TrimSpace(spec.Action) == "" {
+		return
+	}
+	action := strings.TrimSpace(spec.Action)
+	d.launcherConfirm[action] = spec.NeedsConfirmation
+	if strings.TrimSpace(spec.Label) != "" {
+		d.launcherLabels[action] = strings.TrimSpace(spec.Label)
+	}
+}
+
+func (d *Dashboard) launcherActionLabel(action string) string {
+	if label := d.launcherLabels[action]; label != "" {
+		return label
+	}
+	return action
+}
+
+func (d *Dashboard) handleMacroAction(action string) {
+	markActivity()
+	action = strings.TrimSpace(action)
+	if action == "" {
+		return
+	}
+	if pcMacroClient == nil {
+		d.SetPCConnectionStatus("Not configured")
+		return
+	}
+	if d.launcherConfirm[action] {
+		now := time.Now()
+		if d.pendingMacro != action || now.After(d.pendingMacroUntil) {
+			d.pendingMacro = action
+			d.pendingMacroUntil = now.Add(macroConfirmTimeout)
+			d.SetPCConnectionStatus(fmt.Sprintf("Tap again to confirm %s", d.launcherActionLabel(action)))
+			return
+		}
+		d.pendingMacro = ""
+		d.pendingMacroUntil = time.Time{}
+	}
+	go pcMacroClient.Execute(action)
 }
 
 func (d *Dashboard) buildInfoView() *C.GtkWidget {

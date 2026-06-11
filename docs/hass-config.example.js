@@ -21,6 +21,6 @@ window.HASS_CONFIG = {
     { action: "monitor_toggle", icon: "monitor_toggle", label: "Monitor" },
     { action: "launch_chrome", icon: "launch_chrome", label: "Browser" },
     { action: "launch_mail", icon: "launch_mail", label: "Mail" },
-    { action: "sleep", icon: "sleep", label: "Sleep" }
+    { action: "sleep", icon: "sleep", label: "Sleep", needsConfirmation: true }
   ]
 };

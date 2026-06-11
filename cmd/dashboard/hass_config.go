@@ -9,9 +9,34 @@ import (
 )
 
 type LauncherButtonConfig struct {
-	Action string `json:"action"`
-	Icon   string `json:"icon,omitempty"`
-	Label  string `json:"label,omitempty"`
+	Action            string `json:"action"`
+	Icon              string `json:"icon,omitempty"`
+	Label             string `json:"label,omitempty"`
+	NeedsConfirmation bool   `json:"needsConfirmation,omitempty"`
+}
+
+func (c *LauncherButtonConfig) UnmarshalJSON(b []byte) error {
+	var aux struct {
+		Action                 string `json:"action"`
+		Icon                   string `json:"icon"`
+		Label                  string `json:"label"`
+		NeedsConfirmation      *bool  `json:"needsConfirmation"`
+		NeedsConfirmationSnake *bool  `json:"needs_confirmation"`
+	}
+	if err := json.Unmarshal(b, &aux); err != nil {
+		return err
+	}
+	c.Action = aux.Action
+	c.Icon = aux.Icon
+	c.Label = aux.Label
+	c.NeedsConfirmation = false
+	if aux.NeedsConfirmation != nil {
+		c.NeedsConfirmation = *aux.NeedsConfirmation
+	}
+	if aux.NeedsConfirmationSnake != nil {
+		c.NeedsConfirmation = *aux.NeedsConfirmationSnake
+	}
+	return nil
 }
 
 type HassConfig struct {

@@ -49,8 +49,23 @@ func TestParseConfigLauncherButtons(t *testing.T) {
 }
 
 func TestLauncherButtonsDefaultOnlyWhenOmitted(t *testing.T) {
-	if got := launcherButtons(nil); len(got) != 9 {
-		t.Fatalf("default launcher buttons len = %d; want 9", len(got))
+	defaults := launcherButtons(nil)
+	if len(defaults) != 9 {
+		t.Fatalf("default launcher buttons len = %d; want 9", len(defaults))
+	}
+	for _, action := range []string{"sleep", "restart", "shutdown"} {
+		found := false
+		for _, spec := range defaults {
+			if spec.Action == action {
+				found = true
+				if !spec.NeedsConfirmation {
+					t.Fatalf("default %s should require confirmation", action)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("default launcher missing %s", action)
+		}
 	}
 	if got := launcherButtons([]LauncherButtonConfig{}); len(got) != 0 {
 		t.Fatalf("explicit empty launcher buttons len = %d; want 0", len(got))
@@ -58,5 +73,15 @@ func TestLauncherButtonsDefaultOnlyWhenOmitted(t *testing.T) {
 	got := launcherButtons([]LauncherButtonConfig{{Action: ""}, {Action: " sleep "}})
 	if len(got) != 1 || got[0].Action != "sleep" {
 		t.Fatalf("launcherButtons did not trim/filter actions: %+v", got)
+	}
+}
+
+func TestLauncherButtonConfigAcceptsSnakeConfirmation(t *testing.T) {
+	var cfg LauncherButtonConfig
+	if err := cfg.UnmarshalJSON([]byte(`{"action":"shutdown","needs_confirmation":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.NeedsConfirmation {
+		t.Fatal("needs_confirmation did not set NeedsConfirmation")
 	}
 }

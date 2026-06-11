@@ -15,7 +15,7 @@
    - [x] Keep important operational logs: launch, suspend/wake, early wake, errors.
 
 3. Button confirmation support
-   - Add `needsConfirmation` / `needs_confirmation` to launcher button config.
-   - Use confirmation for destructive actions such as `shutdown`, `restart`, and maybe `sleep`.
-   - Decide UX for confirmation on e-ink: second tap, temporary confirm state, or separate confirmation view.
-   - Make public default launcher safe by requiring confirmation for destructive actions.
+   - [x] Add `needsConfirmation` / `needs_confirmation` to launcher button config.
+   - [x] Use confirmation for destructive actions such as `shutdown`, `restart`, and `sleep`.
+   - [x] Use second-tap confirmation with a temporary status message.
+   - [x] Make public default launcher safe by requiring confirmation for destructive actions.
