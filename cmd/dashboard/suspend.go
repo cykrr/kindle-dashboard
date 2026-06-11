@@ -94,6 +94,10 @@ func waitForNetwork(maxWait time.Duration) {
 	}
 }
 
+func isEarlyWakeWall(resumedAt, scheduledWakeAt time.Time, margin time.Duration) bool {
+	return resumedAt.Before(scheduledWakeAt.Add(-margin))
+}
+
 // runSuspendCycle suspends to RAM between minute boundaries, waking via RTC
 // alarm at (or just after) each wall-clock minute to refresh the clock and
 // poll HA/PC status. If the wakealarm can't be set, it stays awake for that
@@ -140,12 +144,12 @@ func runSuspendCycle(d *Dashboard) {
 		preSuspendBrightness := readBrightness()
 
 		scheduledSleep := wait + 2*time.Second
-		log.Printf("suspend: suspending for %v (wakealarm +%v)", wait, scheduledSleep)
+		scheduledWakeAt := time.Now().Add(scheduledSleep).Round(0)
+		log.Printf("suspend: suspending for %v (wakealarm +%v, scheduled_wake=%s)", wait, scheduledSleep, scheduledWakeAt.Format(time.RFC3339Nano))
 		if err := setWakeAlarm(scheduledSleep); err != nil {
 			log.Printf("suspend: %v — staying awake this cycle", err)
 			time.Sleep(wait)
 		} else {
-			suspendStart := time.Now()
 			if err := suspendToRAM(); err != nil {
 				log.Printf("suspend: %v — staying awake this cycle", err)
 				time.Sleep(wait)
@@ -157,9 +161,12 @@ func runSuspendCycle(d *Dashboard) {
 
 				// If we resumed well before the scheduled wakealarm, this was
 				// a manual (power button) wake - give the user a window to
-				// operate the device.
-				if elapsed := time.Since(suspendStart); elapsed < scheduledSleep-earlyWakeMargin {
-					log.Printf("suspend: early wake (%v < %v) - button-wake grace %v", elapsed, scheduledSleep, buttonWakeGrace)
+				// operate the device. Use wall-clock times here: on Kindle, Go's
+				// monotonic clock appears not to advance during suspend, so
+				// time.Since(suspendStart) makes scheduled RTC wakes look early.
+				resumedAt := time.Now().Round(0)
+				if isEarlyWakeWall(resumedAt, scheduledWakeAt, earlyWakeMargin) {
+					log.Printf("suspend: early wake (resumed=%s scheduled_wake=%s margin=%v) - button-wake grace %v", resumedAt.Format(time.RFC3339Nano), scheduledWakeAt.Format(time.RFC3339Nano), earlyWakeMargin, buttonWakeGrace)
 					buttonWakeDeadline.Store(time.Now().Add(buttonWakeGrace).UnixNano())
 				}
 
