@@ -19,7 +19,6 @@ import (
 const hassPollInterval = 2 * time.Minute
 
 type HassDashboard interface {
-	UpdateMusic(MusicData)
 	UpdateMail(MailData)
 	UpdateLight(LightData)
 	UpdateAgenda(AgendaData)
@@ -349,8 +348,6 @@ func (h *HassClient) RequestCalendarEvents(force bool) {
 // handleState dispatches state updates to the dashboard.
 func (h *HassClient) handleState(st HassState) {
 	switch st.EntityID {
-	case h.cfg.MusicEntity:
-		h.dash.UpdateMusic(parseMusicData(st))
 	case h.cfg.MailEntity:
 		h.dash.UpdateMail(parseMailData(st, h.cfg.MailLabel))
 	}
