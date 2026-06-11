@@ -5,10 +5,10 @@ ENV_FILE="${ENV_FILE:-.env}"
 SSH_TARGET="${SSH_TARGET:-root@192.168.1.91}"
 SSH_PORT="${SSH_PORT:-2222}"
 REMOTE_DIR="${REMOTE_DIR:-/mnt/us/documents/kindle-dashboard}"
-HASS_ENTITY="${HASS_ENTITY:-media_player.googlehome1844}"
-HASS_MAIL_ENTITY="${HASS_MAIL_ENTITY:-sensor.imap_me_messages}"
+HASS_ENTITY="${HASS_ENTITY:-}"
+HASS_MAIL_ENTITY="${HASS_MAIL_ENTITY:-}"
 HASS_MAIL_LABEL="${HASS_MAIL_LABEL:-Mail}"
-HASS_CALENDAR_ENTITIES="${HASS_CALENDAR_ENTITIES:-calendar.it,calendar.calendario}"
+HASS_CALENDAR_ENTITIES="${HASS_CALENDAR_ENTITIES:-}"
 HASS_LIGHT_ENTITIES="${HASS_LIGHT_ENTITIES:-}"
 PC_MACRO_URL="${PC_MACRO_URL:-}"
 PC_MACRO_KEY="${PC_MACRO_KEY:-${MACRO_API_KEY:-}}"
@@ -68,9 +68,6 @@ if not url or not token:
 config = {
     'url': url.rstrip('/'),
     'token': token,
-    'entity': entity,
-    'musicEntity': entity,
-    'mailEntity': mail_entity,
     'mailLabel': mail_label,
     'calendarEntities': calendar_entities,
     'lightEntities': light_entities,
@@ -78,8 +75,13 @@ config = {
     'pcMacroKey': pc_macro_key,
     'brightnessEntity': brightness_entity,
 }
+if entity:
+    config['entity'] = entity
+    config['musicEntity'] = entity
+if mail_entity:
+    config['mailEntity'] = mail_entity
 out_path.write_text('window.HASS_CONFIG = ' + json.dumps(config, ensure_ascii=False, indent=2) + ';\n')
-print(f'wrote {out_path} for music={entity} mail={mail_entity} calendars={",".join(calendar_entities)} lights={",".join(light_entities)} pc={pc_macro_url} brightness={brightness_entity} at {url.rstrip("/")}')
+print(f'wrote {out_path} for music={entity or "disabled"} mail={mail_entity or "disabled"} calendars={",".join(calendar_entities) or "disabled"} lights={",".join(light_entities)} pc={pc_macro_url} brightness={brightness_entity} at {url.rstrip("/")}')
 PY
 
 scp -P"$SSH_PORT" "$OUT_FILE" "$SSH_TARGET:$REMOTE_DIR/$OUT_FILE" >/dev/null
