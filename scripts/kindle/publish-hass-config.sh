@@ -2,9 +2,21 @@
 set -euo pipefail
 
 ENV_FILE="${ENV_FILE:-.env}"
-SSH_TARGET="${SSH_TARGET:-root@192.168.1.91}"
-SSH_PORT="${SSH_PORT:-2222}"
-REMOTE_DIR="${REMOTE_DIR:-/mnt/us/documents/kindle-dashboard}"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+SSH_PORT="${SSH_PORT:-${KINDLE_PORT:-2222}}"
+if [[ -z "${SSH_TARGET:-}" ]]; then
+  if [[ -z "${KINDLE_IP:-}" ]]; then
+    echo "Set SSH_TARGET or KINDLE_IP in $ENV_FILE/the environment" >&2
+    exit 2
+  fi
+  SSH_TARGET="root@$KINDLE_IP"
+fi
+REMOTE_DIR="${REMOTE_DIR:-${DASHBOARD_DIR:-/mnt/us/documents/kindle-dashboard}}"
 HASS_ENTITY="${HASS_ENTITY:-}"
 HASS_MAIL_ENTITY="${HASS_MAIL_ENTITY:-}"
 HASS_MAIL_LABEL="${HASS_MAIL_LABEL:-Mail}"

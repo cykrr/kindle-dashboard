@@ -46,7 +46,7 @@ file "${DEPLOY_DIR}/dashboard-native" 2>/dev/null || true
 ls -lh "${DEPLOY_DIR}/dashboard-native"
 echo ""
 echo "To deploy:"
-echo "scp -P2222 ${DEPLOY_DIR}/dashboard-native root@192.168.1.91:/mnt/us/documents/kindle-dashboard/"
+echo "scp -P\${KINDLE_PORT:-2222} ${DEPLOY_DIR}/dashboard-native root@\${KINDLE_IP}:/mnt/us/documents/kindle-dashboard/"
 echo ""
 echo "On Kindle, stop the current dashboard (launch.sh) and run:"
 echo "DISPLAY=:0 /mnt/us/documents/kindle-dashboard/dashboard-native"

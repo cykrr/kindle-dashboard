@@ -7,7 +7,7 @@
    - [x] Update README to match current implementation: native GTK, HA REST polling, PC macro SSE/HTTP.
    - [x] Document Kindle prerequisites, jailbreak assumptions, deployment flow, logs, and recovery/stop scripts.
    - [x] Document personalization: launcher buttons, Home Assistant entities, PC macro URL/key, brightness entity, suspend-cycle behavior.
-   - [ ] Remove remaining personal deployment defaults such as Kindle IPs and SSH env vars from helper scripts.
+   - [x] Remove remaining personal deployment defaults such as Kindle IPs and SSH env vars from helper scripts.
 
 2. Debug flag / logging cleanup
    - [x] Add a `-debug` flag or config option.
