@@ -25,6 +25,10 @@ const (
 	// touching the screen (or shortly after).
 	activityGracePeriod = 15 * time.Second
 
+	// rtcWakeLead wakes before the minute boundary, giving Kindle hardware time
+	// to resume so the visible redraw can happen at roughly :00 instead of after.
+	rtcWakeLead = 2 * time.Second
+
 	// earlyWakeMargin: if the device resumes this much earlier than its
 	// scheduled wakealarm, treat it as a manual (power button) wake rather
 	// than the scheduled RTC alarm.
@@ -110,6 +114,22 @@ func rememberBrightness(current, saved int) int {
 	return saved
 }
 
+func nextRedrawBoundary(now time.Time) time.Time {
+	next := now.Truncate(time.Minute).Add(time.Minute)
+	if next.Sub(now) < 5*time.Second {
+		next = next.Add(time.Minute)
+	}
+	return next
+}
+
+func wakeAlarmDelayForBoundary(now, boundary time.Time) time.Duration {
+	wakeAt := boundary.Add(-rtcWakeLead)
+	if !wakeAt.After(now) {
+		wakeAt = now.Add(time.Second)
+	}
+	return time.Duration(wakeAlarmSeconds(wakeAt.Sub(now))) * time.Second
+}
+
 // runSuspendCycle suspends to RAM between minute boundaries, waking via RTC
 // alarm at (or just after) each wall-clock minute to refresh the clock and
 // poll HA/PC status. If the wakealarm can't be set, it stays awake for that
@@ -148,18 +168,16 @@ func runSuspendCycle(d *Dashboard) {
 		}
 
 		now := time.Now()
-		next := now.Truncate(time.Minute).Add(time.Minute)
-		wait := time.Until(next)
-		if wait < 5*time.Second {
-			wait += time.Minute
-		}
+		redrawAt := nextRedrawBoundary(now)
+		wait := time.Until(redrawAt)
 
 		savedBrightness = rememberBrightness(readBrightness(), savedBrightness)
 
-		wakeAlarmDelay := time.Duration(wakeAlarmSeconds(wait)) * time.Second
+		wakeAlarmDelay := wakeAlarmDelayForBoundary(now, redrawAt)
 		scheduledWakeAt := time.Now().Add(wakeAlarmDelay).Round(0)
 		resumedFromSuspend := false
-		log.Printf("suspend: suspending for %v (wakealarm +%v, scheduled_wake=%s)", wait, wakeAlarmDelay, scheduledWakeAt.Format(time.RFC3339Nano))
+		earlyWake := false
+		log.Printf("suspend: suspending for %v until redraw=%s (wakealarm +%v, scheduled_wake=%s, lead=%v)", wait, redrawAt.Format(time.RFC3339Nano), wakeAlarmDelay, scheduledWakeAt.Format(time.RFC3339Nano), rtcWakeLead)
 		if err := setWakeAlarm(wakeAlarmDelay); err != nil {
 			log.Printf("suspend: %v — staying awake this cycle", err)
 			time.Sleep(wait)
@@ -180,6 +198,7 @@ func runSuspendCycle(d *Dashboard) {
 				// time.Since(suspendStart) makes scheduled RTC wakes look early.
 				resumedAt := time.Now().Round(0)
 				if isEarlyWakeWall(resumedAt, scheduledWakeAt, earlyWakeMargin) {
+					earlyWake = true
 					log.Printf("suspend: early wake (resumed=%s scheduled_wake=%s margin=%v) - restoring brightness %d and starting button-wake grace %v", resumedAt.Format(time.RFC3339Nano), scheduledWakeAt.Format(time.RFC3339Nano), earlyWakeMargin, savedBrightness, buttonWakeGrace)
 					writeBrightness(savedBrightness)
 					d.UpdateBrightnessValue(savedBrightness)
@@ -194,8 +213,15 @@ func runSuspendCycle(d *Dashboard) {
 		// status polling shouldn't flash the frontlight on.
 		suppressBrightnessSync.Store(true)
 
-		// Redraw immediately on wake so the minute changes on-screen around :00.
-		// WiFi/HA polling can wait for the post-resume settle window below.
+		// RTC wakes happen before the minute boundary. Stay awake, frontlight off,
+		// until :00 so the visible redraw lands on the correct minute. Manual
+		// early wakes refresh immediately so the user is not staring at stale UI.
+		if !earlyWake {
+			if untilRedraw := time.Until(redrawAt); untilRedraw > 0 {
+				log.Printf("suspend: waiting %v until redraw boundary %s", untilRedraw, redrawAt.Format(time.RFC3339Nano))
+				time.Sleep(untilRedraw)
+			}
+		}
 		d.RefreshVisibleView(time.Now())
 
 		if resumedFromSuspend {

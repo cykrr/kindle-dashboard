@@ -24,6 +24,24 @@ func TestWakeAlarmSecondsCeils(t *testing.T) {
 	}
 }
 
+func TestWakeAlarmDelayForBoundaryUsesLead(t *testing.T) {
+	now := time.Date(2026, 6, 11, 11, 18, 40, 135947004, time.UTC)
+	boundary := time.Date(2026, 6, 11, 11, 19, 0, 0, time.UTC)
+	got := wakeAlarmDelayForBoundary(now, boundary)
+	if got != 18*time.Second {
+		t.Fatalf("wakeAlarmDelayForBoundary = %v; want 18s", got)
+	}
+}
+
+func TestNextRedrawBoundarySkipsWhenTooClose(t *testing.T) {
+	now := time.Date(2026, 6, 11, 11, 18, 57, 0, time.UTC)
+	got := nextRedrawBoundary(now)
+	want := time.Date(2026, 6, 11, 11, 20, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("nextRedrawBoundary = %s; want %s", got, want)
+	}
+}
+
 func TestRememberBrightness(t *testing.T) {
 	if got := rememberBrightness(120, 50); got != 120 {
 		t.Fatalf("rememberBrightness should prefer current nonzero brightness, got %d", got)
