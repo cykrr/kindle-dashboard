@@ -23,7 +23,7 @@ scp -P${KINDLE_PORT} scripts/kindle/launch.sh root@${KINDLE_IP}:${DASHBOARD_DIR}
 
 # Deploy KUAL extension
 echo "Copying KUAL extension..."
-KUAL_EXTENSIONS_DIR="/mnt/us/extensions"
+KUAL_EXTENSIONS_DIR="/mnt/us/kual/extensions"
 ssh -p ${KINDLE_PORT} root@${KINDLE_IP} "mkdir -p ${KUAL_EXTENSIONS_DIR}" || true
 scp -P${KINDLE_PORT} -r kindle/kual/Kindle-Dashboard root@${KINDLE_IP}:${KUAL_EXTENSIONS_DIR}/
 
