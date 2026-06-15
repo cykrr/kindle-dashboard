@@ -16,6 +16,11 @@ extern void onSwipeStart(double x, double y);
 extern void onSwipeEnd(double x, double y);
 extern void onToggleEntityClicked(char *entity);
 extern void onMacroActionClicked(char *action);
+extern void onToggleWifi();
+extern void onToggleUsbEth();
+extern void onToggleBt();
+extern void onToggleUltraSaving();
+extern void onRestartDashboard();
 extern void processUIQueue();
 
 // Style engine
@@ -408,6 +413,7 @@ static void w_override(void) {
 import "C"
 import (
 	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -438,6 +444,10 @@ const (
 var dash *Dashboard
 var hassClient *HassClient
 var pcMacroClient *PCMacroClient
+
+// restartFlag is set to true when the user clicks Restart.
+// main() checks this after gtk_main_quit() and re-execs.
+var restartFlag atomic.Bool
 var uiQueue struct {
 	mu        sync.Mutex
 	items     []func()
@@ -551,6 +561,82 @@ func onMacroActionClicked(action *C.char) {
 	dash.handleMacroAction(C.GoString(action))
 }
 
+//export onToggleWifi
+func onToggleWifi() {
+	markActivity()
+	if dash == nil {
+		return
+	}
+	go func() {
+		if wifiState() == "On" {
+			wifiOff()
+		} else {
+			wifiOn()
+		}
+		dash.runOnUI(func() {
+			dash.updateNetworkLabels()
+		})
+	}()
+}
+
+//export onToggleUsbEth
+func onToggleUsbEth() {
+	markActivity()
+	if dash == nil {
+		return
+	}
+	go func() {
+		if usbEthState() == "On" {
+			usbEthOff()
+		} else {
+			usbEthOn()
+		}
+		dash.runOnUI(func() {
+			dash.updateNetworkLabels()
+		})
+	}()
+}
+
+//export onToggleBt
+func onToggleBt() {
+	markActivity()
+	if dash == nil {
+		return
+	}
+	go func() {
+		if btState() == "On" {
+			btOff()
+		} else {
+			btOn()
+		}
+		dash.runOnUI(func() {
+			dash.updateNetworkLabels()
+		})
+	}()
+}
+
+//export onToggleUltraSaving
+func onToggleUltraSaving() {
+	markActivity()
+	if dash == nil {
+		return
+	}
+	newVal := !ultraSavingMode.Load()
+	ultraSavingMode.Store(newVal)
+	log.Printf("ultra saving mode: %v", newVal)
+	dash.runOnUI(func() {
+		dash.updateNetworkLabels()
+	})
+}
+
+//export onRestartDashboard
+func onRestartDashboard() {
+	markActivity()
+	// GTK main loop will exit, and the main function will re-exec on restart.
+	restartFlag.Store(true)
+	C.gtk_main_quit()
+}
+
 // ─── Dashboard ───
 type DashboardOptions struct {
 	HardwareLandscape bool
@@ -617,6 +703,15 @@ type Dashboard struct {
 	infoPCConnStatus *C.GtkWidget
 	infoHassSummary  *C.GtkWidget
 	infoBrightness   *C.GtkWidget
+
+	// Info view network/actions widgets
+	wifiLabel      *C.GtkWidget
+	wifiBtn        *C.GtkWidget
+	usbLabel       *C.GtkWidget
+	usbBtn         *C.GtkWidget
+	btLabel        *C.GtkWidget
+	btBtn          *C.GtkWidget
+	ultraSavingBtn *C.GtkWidget
 
 	swipeStartX float64
 	swipeStartY float64
@@ -1186,13 +1281,13 @@ func (d *Dashboard) handleMacroAction(action string) {
 }
 
 func (d *Dashboard) buildInfoView() *C.GtkWidget {
-	vb := C.w_vbox(0, 6)
-	C.w_border(vb, 10)
+	vb := C.w_vbox(0, 5)
+	C.w_border(vb, 8)
 
-	// System status
+	// ── System status ──
 	card1 := frameCard("System")
-	vb1 := C.w_vbox(0, 6)
-	C.w_border(vb1, 10)
+	vb1 := C.w_vbox(0, 4)
+	C.w_border(vb1, 8)
 
 	d.infoConnStatus = C.w_lbl()
 	C.w_markup(d.infoConnStatus, C.CString("<span font_desc='10' weight='bold'>Home Assistant</span>"))
@@ -1212,7 +1307,61 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 	C.w_add(card1, vb1)
 	C.w_pack(vb, card1, 0, 0, 0)
 
-	// Brightness card
+	// ── Network card ──
+	netCard := frameCard("Network")
+	netVb := C.w_vbox(0, 2)
+	C.w_border(netVb, 6)
+
+	// WiFi row
+	wifiRow := C.w_hbox(0, 6)
+	d.wifiLabel = C.w_lbl()
+	C.w_markup(d.wifiLabel, C.CString("<span font_desc='10' weight='bold'>WiFi</span>"))
+	C.w_align(d.wifiLabel, 0, 0.5)
+	C.w_pack(wifiRow, d.wifiLabel, 1, 1, 0)
+	toggleBtnName := C.CString(btnNameToggle)
+	d.wifiBtn = C.w_btn_named(C.CString("Off"), toggleBtnName)
+	C.w_signal(d.wifiBtn, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onToggleWifi)))
+	C.w_pack(wifiRow, d.wifiBtn, 0, 0, 0)
+	C.w_pack(netVb, wifiRow, 0, 0, 0)
+
+	// USB Ethernet row
+	usbRow := C.w_hbox(0, 6)
+	d.usbLabel = C.w_lbl()
+	C.w_markup(d.usbLabel, C.CString("<span font_desc='10' weight='bold'>USB Eth</span>"))
+	C.w_align(d.usbLabel, 0, 0.5)
+	C.w_pack(usbRow, d.usbLabel, 1, 1, 0)
+	d.usbBtn = C.w_btn_named(C.CString("Off"), toggleBtnName)
+	C.w_signal(d.usbBtn, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onToggleUsbEth)))
+	C.w_pack(usbRow, d.usbBtn, 0, 0, 0)
+	C.w_pack(netVb, usbRow, 0, 0, 0)
+
+	// Bluetooth row
+	btRow := C.w_hbox(0, 6)
+	d.btLabel = C.w_lbl()
+	C.w_markup(d.btLabel, C.CString("<span font_desc='10' weight='bold'>Bluetooth</span>"))
+	C.w_align(d.btLabel, 0, 0.5)
+	C.w_pack(btRow, d.btLabel, 1, 1, 0)
+	d.btBtn = C.w_btn_named(C.CString("Off"), toggleBtnName)
+	C.w_signal(d.btBtn, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onToggleBt)))
+	C.w_pack(btRow, d.btBtn, 0, 0, 0)
+	C.w_pack(netVb, btRow, 0, 0, 0)
+
+	// Ultra Saving row
+	usRow := C.w_hbox(0, 6)
+	usLabel := C.w_lbl()
+	C.w_markup(usLabel, C.CString("<span font_desc='10' weight='bold'>Ultra Save</span>"))
+	C.w_align(usLabel, 0, 0.5)
+	C.w_pack(usRow, usLabel, 1, 1, 0)
+	d.ultraSavingBtn = C.w_btn_named(C.CString("Off"), toggleBtnName)
+	C.w_signal(d.ultraSavingBtn, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onToggleUltraSaving)))
+	C.w_pack(usRow, d.ultraSavingBtn, 0, 0, 0)
+	C.w_pack(netVb, usRow, 0, 0, 0)
+
+	C.free(unsafe.Pointer(toggleBtnName))
+	C.w_add(netCard, netVb)
+	C.w_pack(vb, netCard, 0, 0, 0)
+
+	// ── Brightness card ──
 	card2 := frameCard("Brightness")
 	vb2 := C.w_vbox(0, 6)
 	C.w_border(vb2, 10)
@@ -1234,7 +1383,23 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 	C.w_add(card2, vb2)
 	C.w_pack(vb, card2, 0, 0, 0)
 
-	// Version info
+	// ── Actions card ──
+	actionCard := frameCard("Actions")
+	actionVb := C.w_hbox(0, 8)
+	C.w_border(actionVb, 8)
+
+	exitBtn := C.w_btn(C.CString("Exit"))
+	C.w_signal(exitBtn, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onQuitClicked)))
+	C.w_pack(actionVb, exitBtn, 1, 1, 0)
+
+	restartBtn := C.w_btn(C.CString("Restart"))
+	C.w_signal(restartBtn, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onRestartDashboard)))
+	C.w_pack(actionVb, restartBtn, 1, 1, 0)
+
+	C.w_add(actionCard, actionVb)
+	C.w_pack(vb, actionCard, 0, 0, 0)
+
+	// ── Version info ──
 	card3 := frameCard("Kindle Dashboard")
 	vb3 := C.w_vbox(0, 6)
 	C.w_border(vb3, 10)
@@ -1249,6 +1414,20 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 	C.w_pack(vb, spacer, 1, 1, 0)
 
 	return vb
+}
+
+func (d *Dashboard) updateNetworkLabels() {
+	if d.wifiBtn == nil || d.usbBtn == nil || d.btBtn == nil || d.ultraSavingBtn == nil {
+		return
+	}
+	setButtonMarkup(d.wifiBtn, wifiState())
+	setButtonMarkup(d.usbBtn, usbEthState())
+	setButtonMarkup(d.btBtn, btState())
+	if ultraSavingMode.Load() {
+		setButtonMarkup(d.ultraSavingBtn, "On")
+	} else {
+		setButtonMarkup(d.ultraSavingBtn, "Off")
+	}
 }
 
 func (d *Dashboard) newMacroButton(label, action string, width int) *C.GtkWidget {

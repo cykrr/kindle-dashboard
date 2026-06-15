@@ -28,9 +28,22 @@ func main() {
 		os.Exit(0)
 	}()
 
+	// Re-exec loop: if the user clicks Restart, restartFlag is set and we
+	// loop back after gtk_main_quit() instead of exiting.
+	for {
+		restartFlag.Store(false)
+		runDashboard(*hwLandscape, *suspendCycle)
+		if !restartFlag.Load() {
+			break
+		}
+		log.Println("main: restarting dashboard")
+	}
+}
+
+func runDashboard(hwLandscape, suspendCycle bool) {
 	cfg, cfgErr := LoadHassConfig()
 	pcEnabled := strings.TrimSpace(cfg.PCMacroURL) != "" && strings.TrimSpace(cfg.PCMacroKey) != ""
-	dash = NewDashboard(DashboardOptions{HardwareLandscape: *hwLandscape, HassLightEntities: cfg.LightEntities, PCEnabled: pcEnabled, LauncherButtons: cfg.LauncherButtons})
+	dash = NewDashboard(DashboardOptions{HardwareLandscape: hwLandscape, HassLightEntities: cfg.LightEntities, PCEnabled: pcEnabled, LauncherButtons: cfg.LauncherButtons})
 	dash.Show()
 	dash.UpdateClock(time.Now())
 
@@ -54,7 +67,7 @@ func main() {
 		dash.SetConnectionStatus("Config Missing")
 	}
 
-	if *suspendCycle {
+	if suspendCycle {
 		// Suspend-to-RAM cycle: handles its own clock/poll refresh on each
 		// RTC wake, replacing the plain clock goroutine below.
 		go runSuspendCycle(dash)
@@ -76,6 +89,9 @@ func main() {
 	// Battery event-driven updates — decoupled from the clock loop.
 	// Uses epoll/POLLPRI to wait for kernel sysfs_notify events.
 	go WatchBatteryCapacity(context.Background(), dash.UpdateBattery)
+
+	// Refresh network labels on startup
+	dash.updateNetworkLabels()
 
 	dash.Loop()
 }

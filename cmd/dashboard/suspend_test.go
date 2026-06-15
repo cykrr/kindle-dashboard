@@ -64,3 +64,86 @@ func TestIsEarlyWakeWall(t *testing.T) {
 		t.Fatal("wake before early-wake margin was not classified as early")
 	}
 }
+
+// ── Quiet-hour tests ────────────────────────────────────────────────────────
+
+func TestIsQuietHour(t *testing.T) {
+	loc := time.UTC
+	cases := []struct {
+		h    int
+		want bool
+	}{
+		{0, true},   // midnight
+		{3, true},   // 3 AM
+		{5, true},   // 5 AM (last quiet hour)
+		{6, false},  // 6 AM — daytime starts
+		{12, false}, // noon
+		{21, false}, // 9 PM — not yet quiet
+		{22, true},  // 10 PM — quiet starts
+		{23, true},  // 11 PM
+	}
+	for _, tc := range cases {
+		now := time.Date(2026, 6, 15, tc.h, 30, 0, 0, loc)
+		if got := isQuietHour(now); got != tc.want {
+			t.Errorf("isQuietHour(hour=%d) = %v; want %v", tc.h, got, tc.want)
+		}
+	}
+}
+
+func TestNextQuietWakeTime_BeforeMidnight(t *testing.T) {
+	loc := time.UTC
+	// 11 PM on the 14th → should wake on 6 AM the 15th (minus lead)
+	now := time.Date(2026, 6, 14, 23, 0, 0, 0, loc)
+	got := nextQuietWakeTime(now)
+	want := time.Date(2026, 6, 15, quietHourEnd, 0, 0, 0, loc).Add(-rtcWakeLead)
+	if !got.Equal(want) {
+		t.Fatalf("nextQuietWakeTime(23:00 on 14th) = %s; want %s", got, want)
+	}
+}
+
+func TestNextQuietWakeTime_AfterMidnight(t *testing.T) {
+	loc := time.UTC
+	// 2 AM on the 15th → same day's 6 AM
+	now := time.Date(2026, 6, 15, 2, 0, 0, 0, loc)
+	got := nextQuietWakeTime(now)
+	want := time.Date(2026, 6, 15, quietHourEnd, 0, 0, 0, loc).Add(-rtcWakeLead)
+	if !got.Equal(want) {
+		t.Fatalf("nextQuietWakeTime(02:00 on 15th) = %s; want %s", got, want)
+	}
+}
+
+func TestNextQuietWakeTime_AfterMorning(t *testing.T) {
+	loc := time.UTC
+	// 10 PM on the 15th (post-quietHourEnd but in quiet hours) → 6 AM the 16th
+	now := time.Date(2026, 6, 15, 22, 0, 0, 0, loc)
+	got := nextQuietWakeTime(now)
+	want := time.Date(2026, 6, 16, quietHourEnd, 0, 0, 0, loc).Add(-rtcWakeLead)
+	if !got.Equal(want) {
+		t.Fatalf("nextQuietWakeTime(22:00 on 15th) = %s; want %s", got, want)
+	}
+}
+
+func TestNextQuietWakeTime_IsInFuture(t *testing.T) {
+	// For any quiet-hour time, the returned wake should always be in the future.
+	loc := time.UTC
+	quietTimes := []int{22, 23, 0, 1, 2, 3, 4, 5}
+	for _, h := range quietTimes {
+		now := time.Date(2026, 6, 15, h, 45, 0, 0, loc)
+		wake := nextQuietWakeTime(now)
+		if !wake.After(now) {
+			t.Errorf("nextQuietWakeTime(hour=%d) = %s is not after now=%s", h, wake, now)
+		}
+	}
+}
+
+func TestNextQuietWakeTime_LeadApplied(t *testing.T) {
+	loc := time.UTC
+	now := time.Date(2026, 6, 15, 3, 0, 0, 0, loc)
+	got := nextQuietWakeTime(now)
+	// Should be exactly quietHourEnd:00:00 minus rtcWakeLead
+	exactBoundary := time.Date(2026, 6, 15, quietHourEnd, 0, 0, 0, loc)
+	wantLead := exactBoundary.Sub(got)
+	if wantLead != rtcWakeLead {
+		t.Fatalf("rtcWakeLead not applied: gap between wake and boundary = %v; want %v", wantLead, rtcWakeLead)
+	}
+}
