@@ -51,6 +51,8 @@ func main() {
 	mux.HandleFunc("/execute", handleExecute)
 	mux.HandleFunc("/status", handleStatus)
 	mux.HandleFunc("/events", handleSSE)
+	mux.HandleFunc("/catalog", handleCatalog)
+	mux.HandleFunc("/icon/", handleIcon)
 
 	srv := &http.Server{Addr: cfg.Port, Handler: mux}
 
@@ -63,11 +65,17 @@ func main() {
 		}
 	}()
 
-	// Show desktop notification that daemon is ready
-	notifyReady()
-
-	// Run the system tray (blocks on the main thread on Windows)
-	startTray(stopCh)
+	if cfg.Headless {
+		// No interactive desktop (service/CI/WSL): block until ctx is done
+		// instead of starting the systray, which needs a session.
+		log.Println("Running headless (no systray)")
+		<-ctx.Done()
+	} else {
+		// Show desktop notification that daemon is ready
+		notifyReady()
+		// Run the system tray (blocks on the main thread on Windows)
+		startTray(stopCh)
+	}
 
 	// User clicked Exit — graceful shutdown
 	log.Println("Shutting down...")

@@ -190,7 +190,13 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	log.Printf("Executing action: %s", action)
 
-	err := executeAction(action)
+	var err error
+	if action == "launch" {
+		// Generic launcher: action=launch&target=<catalog id>
+		err = executeLaunch(r.URL.Query().Get("target"))
+	} else {
+		err = executeAction(action)
+	}
 	if err != nil {
 		if isUnknownAction(err) {
 			notifyWindows("Kindle Macro", "Unknown action: "+action, "warning")

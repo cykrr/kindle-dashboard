@@ -12,6 +12,11 @@ type Config struct {
 	Gsudo  string
 
 	LogPath string
+
+	ShortcutsDir string // folder scanned for .lnk/.url launchables
+	IconCacheDir string // where extracted icon PNGs are cached
+
+	Headless bool // skip systray (for service/headless runs)
 }
 
 func loadConfig() Config {
@@ -20,6 +25,10 @@ func loadConfig() Config {
 		Port:    ":" + envOrDefault("MACRO_PORT", "8080"),
 		Gsudo:   envOrDefault("MACRO_GSUDO", `C:\Users\krr\scoop\apps\gsudo\current\gsudo.exe`),
 		LogPath: envOrDefault("MACRO_LOG_PATH", `C:\ProgramData\KindleDashboard\macro-daemon.log`),
+
+		ShortcutsDir: envOrDefault("MACRO_SHORTCUTS_DIR", `C:\Users\krr\Desktop\Games`),
+		IconCacheDir: envOrDefault("MACRO_ICON_CACHE", `C:\ProgramData\KindleDashboard\icons`),
+		Headless:     envOrDefault("MACRO_HEADLESS", "") != "",
 	}
 	return cfg
 }
