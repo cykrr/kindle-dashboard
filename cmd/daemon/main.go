@@ -53,6 +53,7 @@ func main() {
 	mux.HandleFunc("/events", handleSSE)
 	mux.HandleFunc("/catalog", handleCatalog)
 	mux.HandleFunc("/icon/", handleIcon)
+	mux.HandleFunc("/audio", handleAudio)
 
 	srv := &http.Server{Addr: cfg.Port, Handler: mux}
 

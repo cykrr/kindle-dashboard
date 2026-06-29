@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"os/exec"
@@ -8,6 +9,26 @@ import (
 	"syscall"
 	"unicode/utf16"
 )
+
+// runPowerShellOut runs a PowerShell script and returns its stdout (trimmed).
+// Stderr (CLIXML progress/errors) is kept separate so it doesn't pollute output.
+func runPowerShellOut(script string) (string, error) {
+	encoded := base64.StdEncoding.EncodeToString(encodeUTF16LE(script))
+	cmd := exec.Command("powershell.exe",
+		"-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden",
+		"-ExecutionPolicy", "Bypass", "-EncodedCommand", encoded)
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000,
+	}
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%v: %s", err, cleanupPSOutput(errb.Bytes()))
+	}
+	return strings.TrimSpace(out.String()), nil
+}
 
 // runHiddenCmd runs any command with its console window completely hidden.
 func runHiddenCmd(name string, args ...string) ([]byte, error) {

@@ -190,11 +190,18 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 	action := r.URL.Query().Get("action")
 	log.Printf("Executing action: %s", action)
 
+	target := r.URL.Query().Get("target")
 	var err error
-	if action == "launch" {
-		// Generic launcher: action=launch&target=<catalog id>
-		err = executeLaunch(r.URL.Query().Get("target"))
-	} else {
+	switch action {
+	case "launch": // generic launcher: target=<catalog id>
+		err = executeLaunch(target)
+	case "volume_set": // target=0..100
+		err = audioSetVolume(target)
+	case "mute_toggle":
+		err = audioToggleMute()
+	case "audio_output": // target=<device id>
+		err = audioSetDefault(target)
+	default:
 		err = executeAction(action)
 	}
 	if err != nil {
