@@ -1,9 +1,16 @@
 package main
 
 import (
+	"bufio"
+	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
+	"os/exec"
 	"strconv"
+	"strings"
+	"sync"
+	"syscall"
 )
 
 // Audio control via Windows Core Audio, driven through PowerShell + embedded
@@ -142,20 +149,114 @@ public class CoreAudio {
 }
 `
 
-// audioScript wraps the C# definition with a PowerShell tail that performs one
-// operation.
-func audioScript(tail string) string {
-	return "$ErrorActionPreference='Stop'\n$sig=@'\n" + audioCSharp + "\n'@\nAdd-Type -TypeDefinition $sig\n" + tail
+// audioWorker is a single long-lived PowerShell process that compiles the
+// Core Audio C# once and then serves one command per stdin line. This keeps
+// each operation at a few milliseconds (no per-call Add-Type compile), which
+// is what makes a real-time volume slider feasible.
+type psWorker struct {
+	mu  sync.Mutex
+	cmd *exec.Cmd
+	in  io.WriteCloser
+	out *bufio.Reader
 }
 
-const audioStateTail = `
-$outs = [CoreAudio]::ListOutputs() | ForEach-Object { @{ id = $_.id; name = $_.name; default = $_.isDefault } }
-@{ volume = [CoreAudio]::GetVolume(); muted = [CoreAudio]::GetMute(); outputs = @($outs) } | ConvertTo-Json -Depth 4 -Compress
+var audioWorker = &psWorker{}
+
+// workerScript loads the C# once, signals READY, then loops reading commands:
+//
+//	vol <0-100> | mute | output <id> | state   -> each replies with one line
+const workerScript = "$ErrorActionPreference='Stop'\n$sig=@'\n" + audioCSharp + `
+'@
+Add-Type -TypeDefinition $sig
+[Console]::Out.WriteLine('READY'); [Console]::Out.Flush()
+while ($true) {
+    $line = [Console]::In.ReadLine()
+    if ($null -eq $line) { break }
+    try {
+        $sp = $line -split ' ', 2
+        switch ($sp[0]) {
+            'vol'    { [CoreAudio]::SetVolume([int]$sp[1]); [Console]::Out.WriteLine('OK') }
+            'mute'   { [CoreAudio]::ToggleMute(); [Console]::Out.WriteLine('OK') }
+            'output' { [CoreAudio]::SetDefault($sp[1]); [Console]::Out.WriteLine('OK') }
+            'state'  {
+                $outs = [CoreAudio]::ListOutputs() | ForEach-Object { @{ id = $_.id; name = $_.name; default = $_.isDefault } }
+                @{ volume = [CoreAudio]::GetVolume(); muted = [CoreAudio]::GetMute(); outputs = @($outs) } | ConvertTo-Json -Depth 4 -Compress
+            }
+            default  { [Console]::Out.WriteLine('ERR unknown') }
+        }
+    } catch { [Console]::Out.WriteLine('ERR ' + $_.Exception.Message) }
+    [Console]::Out.Flush()
+}
 `
+
+// ensure starts the worker if it isn't running, blocking until READY. Caller
+// must hold w.mu.
+func (w *psWorker) ensure() error {
+	if w.cmd != nil && w.cmd.ProcessState == nil {
+		return nil // still running
+	}
+	enc := base64.StdEncoding.EncodeToString(encodeUTF16LE(workerScript))
+	// NOTE: no -NonInteractive — it makes [Console]::In.ReadLine() return null,
+	// killing the read loop after one command (forcing a recompile every call).
+	cmd := exec.Command("powershell.exe",
+		"-NoProfile", "-WindowStyle", "Hidden",
+		"-ExecutionPolicy", "Bypass", "-EncodedCommand", enc)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000}
+
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	outPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	w.cmd, w.in, w.out = cmd, in, bufio.NewReader(outPipe)
+
+	ready, err := w.out.ReadString('\n')
+	if err != nil || strings.TrimSpace(ready) != "READY" {
+		w.killLocked()
+		return fmt.Errorf("audio worker failed to start: %q (%v)", strings.TrimSpace(ready), err)
+	}
+	return nil
+}
+
+func (w *psWorker) killLocked() {
+	if w.cmd != nil && w.cmd.Process != nil {
+		w.cmd.Process.Kill()
+	}
+	w.cmd, w.in, w.out = nil, nil, nil
+}
+
+// do sends one command line and returns the single-line reply.
+func (w *psWorker) do(line string) (string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err := w.ensure(); err != nil {
+		return "", err
+	}
+	if _, err := io.WriteString(w.in, line+"\n"); err != nil {
+		w.killLocked()
+		return "", err
+	}
+	resp, err := w.out.ReadString('\n')
+	if err != nil {
+		w.killLocked() // restart next time
+		return "", err
+	}
+	resp = strings.TrimSpace(resp)
+	if strings.HasPrefix(resp, "ERR ") {
+		return "", fmt.Errorf("audio: %s", strings.TrimPrefix(resp, "ERR "))
+	}
+	return resp, nil
+}
 
 // audioStateJSON returns current volume/mute plus the list of output devices.
 func audioStateJSON() (string, error) {
-	return runPowerShellOut(audioScript(audioStateTail))
+	return audioWorker.do("state")
 }
 
 func audioSetVolume(arg string) error {
@@ -168,12 +269,12 @@ func audioSetVolume(arg string) error {
 	} else if n > 100 {
 		n = 100
 	}
-	_, err = runPowerShellOut(audioScript(fmt.Sprintf("[CoreAudio]::SetVolume(%d)", n)))
+	_, err = audioWorker.do(fmt.Sprintf("vol %d", n))
 	return err
 }
 
 func audioToggleMute() error {
-	_, err := runPowerShellOut(audioScript("[CoreAudio]::ToggleMute()"))
+	_, err := audioWorker.do("mute")
 	return err
 }
 
@@ -181,7 +282,7 @@ func audioSetDefault(id string) error {
 	if id == "" {
 		return unknownActionError("audio_output: missing target")
 	}
-	_, err := runPowerShellOut(audioScript("[CoreAudio]::SetDefault('" + psEscape(id) + "')"))
+	_, err := audioWorker.do("output " + id)
 	return err
 }
 

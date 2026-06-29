@@ -192,15 +192,23 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 
 	target := r.URL.Query().Get("target")
 	var err error
+	// fast actions don't change the polled StatusResponse and must respond with
+	// low latency (e.g. a real-time volume slider), so they skip the settle
+	// sleep + status broadcast below.
+	fast := false
 	switch action {
 	case "launch": // generic launcher: target=<catalog id>
 		err = executeLaunch(target)
+		fast = true
 	case "volume_set": // target=0..100
 		err = audioSetVolume(target)
+		fast = true
 	case "mute_toggle":
 		err = audioToggleMute()
+		fast = true
 	case "audio_output": // target=<device id>
 		err = audioSetDefault(target)
+		fast = true
 	default:
 		err = executeAction(action)
 	}
@@ -216,8 +224,10 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Wait for Windows to process the action before reading status
-	time.Sleep(400 * time.Millisecond)
-	broker.Publish(buildStatus())
+	if !fast {
+		// Wait for Windows to process the action before reading status
+		time.Sleep(400 * time.Millisecond)
+		broker.Publish(buildStatus())
+	}
 	w.WriteHeader(http.StatusOK)
 }
