@@ -14,6 +14,17 @@ func main() {
 	// Load configuration from environment
 	cfg = loadConfig()
 
+	// Phase 0 spike: `macro-daemon.exe extract-icon <shortcut> <out.png>`
+	// Extracts a jumbo icon and exits, without starting the server/tray.
+	if len(os.Args) >= 4 && os.Args[1] == "extract-icon" {
+		if err := extractIconPNG(os.Args[2], os.Args[3]); err != nil {
+			fmt.Fprintln(os.Stderr, "extract failed:", err)
+			os.Exit(1)
+		}
+		fmt.Println("wrote", os.Args[3])
+		return
+	}
+
 	// Set up logging
 	logFile, err := os.OpenFile(cfg.LogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err == nil {
