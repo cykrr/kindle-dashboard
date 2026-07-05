@@ -90,6 +90,11 @@ func runDashboard(hwLandscape, suspendCycle bool) {
 	// Uses epoll/POLLPRI to wait for kernel sysfs_notify events.
 	go WatchBatteryCapacity(context.Background(), dash.UpdateBattery)
 
+	// Configure static IP for wlan0 (safe — runtime only, lost on reboot)
+	if err := setWifiStaticIP(); err != nil {
+		log.Printf("network: static IP: %v", err)
+	}
+
 	// Refresh network labels on startup
 	dash.updateNetworkLabels()
 

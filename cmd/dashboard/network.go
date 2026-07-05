@@ -3,9 +3,26 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os/exec"
 	"strings"
 )
+
+// getIPAddress returns the first non-loopback IPv4 address it finds.
+func getIPAddress() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "Unknown"
+	}
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				return ipnet.IP.String()
+			}
+		}
+	}
+	return "No IP"
+}
 
 // ── WiFi ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +73,28 @@ func wifiOff() error {
 	}
 	if len(errs) > 0 {
 		return fmt.Errorf("wifi off: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// setWifiStaticIP configures a static IP on wlan0 at runtime.
+// Safe — no rootfs modification, lost on reboot.
+func setWifiStaticIP() error {
+	cmds := [][]string{
+		{"ip", "addr", "add", "192.168.1.91/24", "dev", "wlan0"},
+		{"ip", "route", "add", "default", "via", "192.168.1.1"},
+	}
+	var errs []string
+	for _, cmd := range cmds {
+		if out, err := exec.Command(cmd[0], cmd[1:]...).CombinedOutput(); err != nil {
+			// "RTNETLINK answers: File exists" means already configured — fine.
+			if !strings.Contains(string(out), "File exists") {
+				errs = append(errs, fmt.Sprintf("%v: %s", err, strings.TrimSpace(string(out))))
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("set static IP: %s", strings.Join(errs, "; "))
 	}
 	return nil
 }

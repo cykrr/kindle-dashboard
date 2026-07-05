@@ -246,7 +246,6 @@ static GtkWidget* w_table(gint r, gint c) {
 	gtk_table_set_col_spacings(GTK_TABLE(t), 0);
 	return t;
 }
-
 // Helpers
 static void w_markup(GtkWidget *l, const char *m) { gtk_label_set_markup(GTK_LABEL(l), m); }
 static void w_text(GtkWidget *l, const char *t)   { gtk_label_set_text(GTK_LABEL(l), t); }
@@ -705,6 +704,7 @@ type Dashboard struct {
 	infoBrightness   *C.GtkWidget
 
 	// Info view network/actions widgets
+	ipLabel        *C.GtkWidget
 	wifiLabel      *C.GtkWidget
 	wifiBtn        *C.GtkWidget
 	usbLabel       *C.GtkWidget
@@ -1312,6 +1312,18 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 	netVb := C.w_vbox(0, 2)
 	C.w_border(netVb, 6)
 
+	// IP Address row
+	ipRow := C.w_hbox(0, 6)
+	ipLabelTitle := C.w_lbl()
+	C.w_markup(ipLabelTitle, C.CString("<span font_desc='10' weight='bold'>IP Address</span>"))
+	C.w_align(ipLabelTitle, 0, 0.5)
+	C.w_pack(ipRow, ipLabelTitle, 1, 1, 0)
+	d.ipLabel = C.w_lbl()
+	C.w_markup(d.ipLabel, C.CString("<span font_desc='10' color='#626262'>Loading...</span>"))
+	C.w_align(d.ipLabel, 1, 0.5)
+	C.w_pack(ipRow, d.ipLabel, 0, 0, 0)
+	C.w_pack(netVb, ipRow, 0, 0, 4)
+
 	// WiFi row
 	wifiRow := C.w_hbox(0, 6)
 	d.wifiLabel = C.w_lbl()
@@ -1419,6 +1431,9 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 func (d *Dashboard) updateNetworkLabels() {
 	if d.wifiBtn == nil || d.usbBtn == nil || d.btBtn == nil || d.ultraSavingBtn == nil {
 		return
+	}
+	if d.ipLabel != nil {
+		setMarkup(d.ipLabel, fmt.Sprintf("<span font_desc='10' color='#626262'>%s</span>", getIPAddress()))
 	}
 	setButtonMarkup(d.wifiBtn, wifiState())
 	setButtonMarkup(d.usbBtn, usbEthState())
