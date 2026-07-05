@@ -667,6 +667,7 @@ type Dashboard struct {
 	clockLbl  *C.GtkWidget
 	dateLbl   *C.GtkWidget
 	statusLbl *C.GtkWidget
+	homeConnStatus *C.GtkWidget
 	calMonth  *C.GtkWidget
 	calYear   *C.GtkWidget
 	calDays   [6][7]*C.GtkWidget
@@ -923,6 +924,11 @@ func (d *Dashboard) buildDashboardView() *C.GtkWidget {
 	d.mailUnread = C.w_lbl()
 	C.w_markup(d.mailUnread, C.CString(fmt.Sprintf("<span font_desc='%s' color='#626262'>✉ 0</span>", statusFont)))
 	C.w_pack(sl, d.mailUnread, 0, 0, 0)
+
+	d.homeConnStatus = C.w_lbl()
+	C.w_markup(d.homeConnStatus, C.CString(fmt.Sprintf("<span font_desc='%s' color='#626262'>HA: ...</span>", statusFont)))
+	C.w_pack(sl, d.homeConnStatus, 0, 0, 0)
+
 	C.w_pack(left, sl, 0, 0, 0)
 
 	C.w_pack(ch, left, 1, 1, 0)
@@ -1505,10 +1511,16 @@ func frameCard(title string) *C.GtkWidget {
 
 func (d *Dashboard) SetConnectionStatus(status string) {
 	d.runOnUI(func() {
-		if d.infoHassSummary == nil {
-			return
+		if d.infoHassSummary != nil {
+			setMarkup(d.infoHassSummary, fmt.Sprintf("<span font_desc='10' color='#626262'>%s</span>", esc(status)))
 		}
-		setMarkup(d.infoHassSummary, fmt.Sprintf("<span font_desc='10' color='#626262'>%s</span>", esc(status)))
+		if d.homeConnStatus != nil {
+			statusFont := "10"
+			if d.options.HardwareLandscape {
+				statusFont = "9"
+			}
+			setMarkup(d.homeConnStatus, fmt.Sprintf("<span font_desc='%s' color='#626262'>HA: %s</span>", statusFont, esc(status)))
+		}
 	})
 }
 
