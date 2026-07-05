@@ -247,15 +247,6 @@ static GtkWidget* w_table(gint r, gint c) {
 	return t;
 }
 
-static GtkWidget* w_scrolled(GtkWidget *c) {
-	GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
-	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-	gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(sw), c);
-	GtkWidget *vp = gtk_bin_get_child(GTK_BIN(sw));
-	if (vp) gtk_viewport_set_shadow_type(GTK_VIEWPORT(vp), GTK_SHADOW_NONE);
-	return sw;
-}
-
 // Helpers
 static void w_markup(GtkWidget *l, const char *m) { gtk_label_set_markup(GTK_LABEL(l), m); }
 static void w_text(GtkWidget *l, const char *t)   { gtk_label_set_text(GTK_LABEL(l), t); }
@@ -336,6 +327,18 @@ static void w_signal(GtkWidget *w, const char *s, GCallback cb) {
 static void w_show(GtkWidget *w)   { gtk_widget_show(w); }
 static void w_hide(GtkWidget *w)   { gtk_widget_hide(w); }
 static void w_show_all(GtkWidget *w) { gtk_widget_show_all(w); }
+static GtkWidget* w_scrolled(GtkWidget *c) {
+	GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+	gtk_scrolled_window_add_with_viewport(GTK_SCROLLED_WINDOW(sw), c);
+	GtkWidget *vp = gtk_bin_get_child(GTK_BIN(sw));
+	if (vp) {
+		gtk_viewport_set_shadow_type(GTK_VIEWPORT(vp), GTK_SHADOW_NONE);
+		w_bg_all(vp, "#ffffff");
+	}
+	w_bg_all(sw, "#ffffff");
+	return sw;
+}
 
 static gboolean w_is_swipe_target(GdkEventButton *event) {
 	GtkWidget *target = gtk_get_event_widget((GdkEvent*)event);
