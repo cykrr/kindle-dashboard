@@ -265,9 +265,9 @@ func runSuspendCycle(d *Dashboard) {
 			log.Printf("suspend: quiet hours — sleeping until %s (in %v)", wakeTarget.Format("15:04:05"), sleepDur)
 
 			// Ultra Saving: physically turn off WiFi before sleep
-			ultraSaving := ultraSavingMode.Load()
+			ultraSaving := ultraSavingMode.Load() || readBatteryStatus() == "Discharging"
 			if ultraSaving {
-				log.Printf("suspend: ultra saving — disabling WiFi radio")
+				log.Printf("suspend: ultra saving / unplugged — disabling WiFi radio")
 				wifiOff()
 			}
 
@@ -407,7 +407,25 @@ func runSuspendCycle(d *Dashboard) {
 			log.Printf("suspend: timed out waiting for initial UI refresh")
 		}
 
-		if resumedFromSuspend {
+		skipNetwork := false
+		if status := readBatteryStatus(); status == "Discharging" {
+			skipNetwork = !earlyWake // When unplugged, skip network unless manually woken
+			if skipNetwork {
+				// Turn off WiFi if we are just background waking for the clock, to save battery
+				if wifiState() == "On" {
+					log.Printf("suspend: unplugged and background wake - disabling WiFi")
+					wifiOff()
+				}
+			} else {
+				// Re-enable WiFi on manual wake if it was disabled
+				if wifiState() == "Off" {
+					log.Printf("suspend: early wake - re-enabling WiFi")
+					wifiOn()
+				}
+			}
+		}
+
+		if resumedFromSuspend && !skipNetwork {
 			// Resume happens asynchronously (WiFi firmware reload, driver
 			// reinit) - give the device a moment to settle before network work,
 			// or it can hang.
@@ -416,35 +434,37 @@ func runSuspendCycle(d *Dashboard) {
 			waitForNetwork(wakeGraceMax - wakeGraceMin)
 		}
 
-		if hassClient != nil {
-			err := hassClient.fetchAll()
-			if err != nil {
-				log.Printf("hass: post-resume fetch: %v", err)
-			} else {
-				hassClient.setConnStatus("Connected")
-			}
-		}
-
-		// PC poll back-off: if the PC has been unreachable for several
-		// consecutive background wakes, skip polling until the user explicitly
-		// opens the launcher (which calls RefreshStatus directly via Touch/
-		// Execute). This avoids burning a WiFi-on cycle for a sleeping PC.
-		if pcMacroClient != nil {
-			if pcFailCount >= pcConsecutiveFailLimit {
-				log.Printf("suspend: skipping PC poll (fail_count=%d >= %d)", pcFailCount, pcConsecutiveFailLimit)
-			} else {
-				if err := pcMacroClient.RefreshStatus(); err != nil {
-					pcFailCount++
-					log.Printf("pc macro: post-resume refresh: %v (fail_count=%d)", err, pcFailCount)
-					if pcFailCount >= pcConsecutiveFailLimit {
-						log.Printf("suspend: PC unreachable for %d consecutive wakes — suppressing background polls", pcFailCount)
-						d.SetPCConnectionStatus("Unreachable")
-					}
+		if !skipNetwork {
+			if hassClient != nil {
+				err := hassClient.fetchAll()
+				if err != nil {
+					log.Printf("hass: post-resume fetch: %v", err)
 				} else {
-					if pcFailCount > 0 {
-						log.Printf("suspend: PC reconnected after %d failures", pcFailCount)
+					hassClient.setConnStatus("Connected")
+				}
+			}
+
+			// PC poll back-off: if the PC has been unreachable for several
+			// consecutive background wakes, skip polling until the user explicitly
+			// opens the launcher (which calls RefreshStatus directly via Touch/
+			// Execute). This avoids burning a WiFi-on cycle for a sleeping PC.
+			if pcMacroClient != nil {
+				if pcFailCount >= pcConsecutiveFailLimit {
+					log.Printf("suspend: skipping PC poll (fail_count=%d >= %d)", pcFailCount, pcConsecutiveFailLimit)
+				} else {
+					if err := pcMacroClient.RefreshStatus(); err != nil {
+						pcFailCount++
+						log.Printf("pc macro: post-resume refresh: %v (fail_count=%d)", err, pcFailCount)
+						if pcFailCount >= pcConsecutiveFailLimit {
+							log.Printf("suspend: PC unreachable for %d consecutive wakes — suppressing background polls", pcFailCount)
+							d.SetPCConnectionStatus("Unreachable")
+						}
+					} else {
+						if pcFailCount > 0 {
+							log.Printf("suspend: PC reconnected after %d failures", pcFailCount)
+						}
+						pcFailCount = 0
 					}
-					pcFailCount = 0
 				}
 			}
 		}
