@@ -237,12 +237,13 @@ func runSuspendCycle(d *Dashboard) {
 			}
 			// Grace expired - clear it and suspend below regardless of view.
 			buttonWakeDeadline.Store(0)
-		} else if view != ViewHome {
-			// Don't suspend while the user is browsing other views -
-			// just wait and re-check.
-			log.Printf("suspend: deferring, currentView=%d != %d", view, ViewHome)
-			time.Sleep(2 * time.Second)
-			continue
+		}
+
+		if d.CurrentView() != ViewHome {
+			log.Printf("suspend: jumping to ViewHome before sleep")
+			d.runOnUIWait(func() {
+				d.showView(ViewHome)
+			}, 300*time.Millisecond)
 		}
 
 		now := time.Now()
