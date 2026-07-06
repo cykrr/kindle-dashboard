@@ -9,6 +9,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -331,4 +333,49 @@ func normalizePCMacroURL(raw string) string {
 		return raw
 	}
 	return "http://" + raw
+}
+
+var idSanitize = regexp.MustCompile(`[^a-z0-9]+`)
+
+func makeID(name string) string {
+	return strings.Trim(idSanitize.ReplaceAllString(strings.ToLower(name), "-"), "-")
+}
+
+func (c *PCMacroClient) SyncCatalogIcons() {
+	log.Println("Syncing icons from PC macro daemon...")
+	v := url.Values{}
+	v.Set("key", c.apiKey)
+	body, err := c.get("/catalog", v)
+	if err != nil {
+		log.Printf("Failed to fetch catalog for icons: %v", err)
+		return
+	}
+	
+	var items []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(body, &items); err != nil {
+		log.Printf("Failed to parse catalog: %v", err)
+		return
+	}
+
+	os.MkdirAll("/tmp/kindle_icons", 0777)
+	for _, item := range items {
+		iconURL := strings.TrimRight(c.baseURL, "/") + "/icon/" + item.ID + ".png?key=" + url.QueryEscape(c.apiKey)
+		resp, err := c.http.Get(iconURL)
+		if err != nil || resp.StatusCode != 200 {
+			if resp != nil {
+				resp.Body.Close()
+			}
+			continue
+		}
+		
+		out, err := os.Create("/tmp/kindle_icons/" + item.ID + ".png")
+		if err == nil {
+			io.Copy(out, resp.Body)
+			out.Close()
+		}
+		resp.Body.Close()
+	}
+	log.Println("Icon sync complete.")
 }

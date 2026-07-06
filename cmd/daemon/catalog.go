@@ -32,44 +32,63 @@ func makeID(name string) string {
 	return strings.Trim(idSanitize.ReplaceAllString(strings.ToLower(name), "-"), "-")
 }
 
-// scanCatalog reads the shortcuts dir, rebuilds the id->path map, and returns
-// the catalog sorted by name. Top-level .lnk/.url only.
 func scanCatalog() []CatalogItem {
 	items := []CatalogItem{}
 	byID := map[string]string{}
 
-	entries, err := os.ReadDir(cfg.ShortcutsDir)
-	if err != nil {
-		log.Printf("catalog: cannot read %s: %v", cfg.ShortcutsDir, err)
-		return items
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
+	err := filepath.WalkDir(cfg.ShortcutsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // skip errors
 		}
-		ext := strings.ToLower(filepath.Ext(e.Name()))
-		if ext != ".lnk" && ext != ".url" {
-			continue
+		if d.IsDir() {
+			return nil
 		}
-		name := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+		
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		if ext != ".lnk" && ext != ".url" && ext != ".ps1" && ext != ".bat" && ext != ".cmd" && ext != ".exe" {
+			return nil
+		}
+		
+		name := strings.TrimSuffix(d.Name(), filepath.Ext(d.Name()))
 		id := makeID(name)
 		if id == "" {
-			continue
+			return nil
 		}
-		byID[id] = filepath.Join(cfg.ShortcutsDir, e.Name())
-		items = append(items, CatalogItem{
-			ID:       id,
-			Name:     name,
-			Category: "gaming",
-			IconURL:  "/icon/" + id + ".png",
-		})
+		
+		// Determine category from relative path
+		category := "root"
+		rel, err := filepath.Rel(cfg.ShortcutsDir, filepath.Dir(path))
+		if err == nil && rel != "." && rel != "" {
+			// Use the first folder name as category, or the whole relative path
+			category = strings.ReplaceAll(rel, string(filepath.Separator), " / ")
+		}
+
+		if _, exists := byID[id]; !exists {
+			byID[id] = path
+			items = append(items, CatalogItem{
+				ID:       id,
+				Name:     name,
+				Category: category,
+				IconURL:  "/icon/" + id + ".png",
+			})
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("catalog: error scanning %s: %v", cfg.ShortcutsDir, err)
 	}
 
 	catalogMu.Lock()
 	catalogByID = byID
 	catalogMu.Unlock()
 
-	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Category != items[j].Category {
+			return items[i].Category < items[j].Category
+		}
+		return items[i].Name < items[j].Name
+	})
 	return items
 }
 
@@ -88,8 +107,6 @@ func pathForID(id string) string {
 	return src
 }
 
-// executeLaunch opens the shortcut for the given catalog id via the shell
-// (Invoke-Item handles .lnk and .url, launching through Epic/Steam/etc.).
 func executeLaunch(id string) error {
 	if id == "" {
 		return unknownActionError("launch: missing target")
@@ -97,6 +114,13 @@ func executeLaunch(id string) error {
 	src := pathForID(id)
 	if src == "" {
 		return unknownActionError("launch: unknown target " + id)
+	}
+	
+	ext := strings.ToLower(filepath.Ext(src))
+	if ext == ".ps1" {
+		return runPowerShell(false, "& '"+psEscape(src)+"'")
+	} else if ext == ".bat" || ext == ".cmd" {
+		return runPowerShell(false, "Start-Process -FilePath '"+psEscape(src)+"' -WindowStyle Hidden")
 	}
 	return runPowerShell(false, "Invoke-Item -LiteralPath '"+psEscape(src)+"'")
 }

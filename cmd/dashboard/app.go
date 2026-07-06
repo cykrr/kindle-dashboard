@@ -91,6 +91,15 @@ static void w_apply_button_style() {
 // then converts to GdkPixbuf via raw data copy.
 // Returns a GtkImage widget ready to pass to gtk_button_set_image().
 static GtkWidget* w_make_icon(const char *name) {
+    char path[256];
+    snprintf(path, sizeof(path), "/tmp/kindle_icons/%s.png", name);
+    GdkPixbuf *file_pb = gdk_pixbuf_new_from_file_at_scale(path, 24, 24, TRUE, NULL);
+    if (file_pb) {
+        GtkWidget *img = gtk_image_new_from_pixbuf(file_pb);
+        g_object_unref(file_pb);
+        return img;
+    }
+
     const int S = 24;
     cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, S, S);
     cairo_t *cr = cairo_create(surf);
@@ -1523,7 +1532,8 @@ func (d *Dashboard) newIconButton(action string, size int) *C.GtkWidget {
 
 func (d *Dashboard) newIconButtonWithIcon(action, icon string, size int) *C.GtkWidget {
 	mediaBtnName := C.CString(btnNameMedia)
-	iconCS := C.CString(icon)
+	iconSafe := makeID(icon)
+	iconCS := C.CString(iconSafe)
 	btn := C.w_btn_icon(iconCS, mediaBtnName)
 	C.free(unsafe.Pointer(mediaBtnName))
 	C.free(unsafe.Pointer(iconCS))

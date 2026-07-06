@@ -43,12 +43,19 @@ func main() {
 func runDashboard(hwLandscape, suspendCycle bool) {
 	cfg, cfgErr := LoadHassConfig()
 	pcEnabled := strings.TrimSpace(cfg.PCMacroURL) != "" && strings.TrimSpace(cfg.PCMacroKey) != ""
+
+	if pcEnabled {
+		pcMacroClient = NewPCMacroClient(cfg, nil)
+		// Sync icons synchronously so w_make_icon can find them when building the UI
+		pcMacroClient.SyncCatalogIcons()
+	}
+
 	dash = NewDashboard(DashboardOptions{HardwareLandscape: hwLandscape, HassLightEntities: cfg.LightEntities, PCEnabled: pcEnabled, LauncherButtons: cfg.LauncherButtons})
 	dash.Show()
 	dash.UpdateClock(time.Now())
 
 	if pcEnabled {
-		pcMacroClient = NewPCMacroClient(cfg, dash)
+		pcMacroClient.dash = dash
 		// One-shot initial status fetch. The SSE stream is opened on-demand
 		// when the user navigates to the launcher view.
 		if err := pcMacroClient.RefreshStatus(); err != nil {
