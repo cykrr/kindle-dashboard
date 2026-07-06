@@ -91,6 +91,15 @@ static void w_apply_button_style() {
 // then converts to GdkPixbuf via raw data copy.
 // Returns a GtkImage widget ready to pass to gtk_button_set_image().
 static GtkWidget* w_make_icon(const char *name) {
+    char path[256];
+    snprintf(path, sizeof(path), "/tmp/kindle_icons/%s.png", name);
+    GdkPixbuf *pb = gdk_pixbuf_new_from_file_at_scale(path, 24, 24, TRUE, NULL);
+    if (pb) {
+        GtkWidget *img = gtk_image_new_from_pixbuf(pb);
+        g_object_unref(pb);
+        return img;
+    }
+
     const int S = 24;
     cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, S, S);
     cairo_t *cr = cairo_create(surf);
