@@ -243,6 +243,26 @@ static GtkWidget* w_btn_icon(const char *icon, const char *n) {
     w_btn_set_icon(b, icon);
     return b;
 }
+static GtkWidget* w_btn_icon_label(const char *icon, const char *label_text, const char *n) {
+    GtkWidget *b = gtk_button_new();
+    gtk_widget_set_name(b, n);
+    GtkWidget *vbox = gtk_vbox_new(FALSE, 4);
+    GtkWidget *img = w_make_icon(icon);
+    GtkWidget *lbl = gtk_label_new(label_text);
+    
+    // Set smaller font size using markup
+    char markup[512];
+    snprintf(markup, sizeof(markup), "<span size='x-small'>%s</span>", label_text);
+    gtk_label_set_markup(GTK_LABEL(lbl), markup);
+    gtk_label_set_line_wrap(GTK_LABEL(lbl), TRUE);
+    gtk_label_set_justify(GTK_LABEL(lbl), GTK_JUSTIFY_CENTER);
+
+    gtk_box_pack_start(GTK_BOX(vbox), img, TRUE, TRUE, 0);
+    gtk_box_pack_start(GTK_BOX(vbox), lbl, FALSE, FALSE, 0);
+    gtk_container_add(GTK_CONTAINER(b), vbox);
+    
+    return b;
+}
 static void w_btn_text(GtkWidget *b, const char *t) { gtk_button_set_label(GTK_BUTTON(b), t); }
 static GtkWidget* w_hscale(double min, double max, double step) {
 	GtkAdjustment *a = (GtkAdjustment*)gtk_adjustment_new(min, min, max, step, step*10, 0);
@@ -1219,7 +1239,12 @@ func buildLauncherView(d *Dashboard) *C.GtkWidget {
 	C.w_border(vb, 10)
 
 	const iconSize = 100
-	buttons := launcherButtons(d.options.LauncherButtons)
+	var buttons []LauncherButtonConfig
+	if pcMacroClient != nil && len(pcMacroClient.Catalog) > 0 {
+		buttons = pcMacroClient.Catalog
+	} else {
+		buttons = launcherButtons(d.options.LauncherButtons)
+	}
 	rows := (len(buttons) + 2) / 3
 	if rows < 1 {
 		rows = 1
@@ -1231,7 +1256,7 @@ func buildLauncherView(d *Dashboard) *C.GtkWidget {
 		row := i / 3
 		col := i % 3
 		d.registerLauncherButton(spec)
-		btn := d.newIconButtonWithIcon(spec.Action, launcherButtonIcon(spec), iconSize)
+		btn := d.newIconButtonWithLabel(spec.Action, launcherButtonIcon(spec), spec.Label, iconSize)
 		d.assignLauncherStatusButton(spec.Action, btn)
 		C.w_table_put_center(grid, btn, C.int(col), C.int(col+1), C.int(row), C.int(row+1))
 	}
@@ -1239,7 +1264,7 @@ func buildLauncherView(d *Dashboard) *C.GtkWidget {
 	C.w_pack(vb, grid, 1, 1, 0)
 	d.SetPCConnectionStatus(map[bool]string{true: "Disconnected", false: "Not configured"}[d.options.PCEnabled])
 	d.UpdatePCStatus(PCStatus{Status: "Idle"})
-	return vb
+	return C.w_scrolled(vb)
 }
 
 func launcherButtons(configured []LauncherButtonConfig) []LauncherButtonConfig {
@@ -1527,14 +1552,21 @@ func (d *Dashboard) newMacroButton(label, action string, width int) *C.GtkWidget
 
 // newIconButton creates an icon-only macro button, fixed at size×size.
 func (d *Dashboard) newIconButton(action string, size int) *C.GtkWidget {
-	return d.newIconButtonWithIcon(action, action, size)
+	return d.newIconButtonWithLabel(action, action, "", size)
 }
 
-func (d *Dashboard) newIconButtonWithIcon(action, icon string, size int) *C.GtkWidget {
+func (d *Dashboard) newIconButtonWithLabel(action, icon, label string, size int) *C.GtkWidget {
 	mediaBtnName := C.CString(btnNameMedia)
 	iconSafe := makeID(icon)
 	iconCS := C.CString(iconSafe)
-	btn := C.w_btn_icon(iconCS, mediaBtnName)
+	var btn *C.GtkWidget
+	if label != "" {
+		labelCS := C.CString(label)
+		btn = C.w_btn_icon_label(iconCS, labelCS, mediaBtnName)
+		C.free(unsafe.Pointer(labelCS))
+	} else {
+		btn = C.w_btn_icon(iconCS, mediaBtnName)
+	}
 	C.free(unsafe.Pointer(mediaBtnName))
 	C.free(unsafe.Pointer(iconCS))
 	as := C.CString(action)

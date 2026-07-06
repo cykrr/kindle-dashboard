@@ -1,12 +1,29 @@
 #!/bin/bash
 set -e
 
+cd "$(dirname "$0")"/../..
+source ./.env
+
+# Wait for Kindle to be reachable via SSH before deploying.
+# Kindle doesn't respond to ping (ICMP firewalled), so probe the SSH port instead.
+# Tap the Kindle's power button to wake it if it's asleep.
+MAX_ATTEMPTS=30
+attempt=1
+echo "Waiting for Kindle to be reachable (tap power button to wake it)..."
+while ! nc -zw 3 ${KINDLE_IP} ${KINDLE_PORT} 2>/dev/null; do
+  if [ $attempt -ge $MAX_ATTEMPTS ]; then
+    echo "Kindle not reachable after ${MAX_ATTEMPTS} attempts. Aborting."
+    exit 1
+  fi
+  echo "  retrying... ($attempt/$MAX_ATTEMPTS)"
+  sleep 2
+  attempt=$((attempt + 1))
+done
+echo "Kindle is awake."
 
 echo "=== Deploying native dashboard to Kindle ==="
 
 # Build the Go binary first
-cd "$(dirname "$0")"/../..
-source ./.env
 ./scripts/build/build-test.sh
 
 # Stop existing process to avoid busy file

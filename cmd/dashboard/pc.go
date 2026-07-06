@@ -46,6 +46,8 @@ type PCMacroClient struct {
 	streamCancel  context.CancelFunc
 	inactiveTimer *time.Timer
 	streaming     bool
+
+	Catalog []LauncherButtonConfig
 }
 
 func NewPCMacroClient(cfg HassConfig, dash PCDashboard) *PCMacroClient {
@@ -352,7 +354,8 @@ func (c *PCMacroClient) SyncCatalogIcons() {
 	}
 	
 	var items []struct {
-		ID string `json:"id"`
+		ID   string `json:"id"`
+		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(body, &items); err != nil {
 		log.Printf("Failed to parse catalog: %v", err)
@@ -360,7 +363,13 @@ func (c *PCMacroClient) SyncCatalogIcons() {
 	}
 
 	os.MkdirAll("/tmp/kindle_icons", 0777)
+	var newCatalog []LauncherButtonConfig
 	for _, item := range items {
+		newCatalog = append(newCatalog, LauncherButtonConfig{
+			Action: item.ID,
+			Icon:   item.ID,
+			Label:  item.Name,
+		})
 		iconURL := strings.TrimRight(c.baseURL, "/") + "/icon/" + item.ID + ".png?key=" + url.QueryEscape(c.apiKey)
 		resp, err := c.http.Get(iconURL)
 		if err != nil || resp.StatusCode != 200 {
@@ -377,5 +386,8 @@ func (c *PCMacroClient) SyncCatalogIcons() {
 		}
 		resp.Body.Close()
 	}
-	log.Println("Icon sync complete.")
+	c.mu.Lock()
+	c.Catalog = newCatalog
+	c.mu.Unlock()
+	log.Println("Icon sync complete. Loaded", len(newCatalog), "catalog items.")
 }
