@@ -20,6 +20,7 @@ extern void onToggleWifi();
 extern void onToggleUsbEth();
 extern void onToggleBt();
 extern void onToggleUltraSaving();
+extern void onToggleQuietHours();
 extern void onRestartDashboard();
 extern void processUIQueue();
 
@@ -641,6 +642,20 @@ func onToggleUltraSaving() {
 	})
 }
 
+//export onToggleQuietHours
+func onToggleQuietHours() {
+	markActivity()
+	if dash == nil {
+		return
+	}
+	newVal := !quietHoursDisabled.Load()
+	quietHoursDisabled.Store(newVal)
+	log.Printf("quiet hours disabled: %v", newVal)
+	dash.runOnUI(func() {
+		dash.updateNetworkLabels()
+	})
+}
+
 //export onRestartDashboard
 func onRestartDashboard() {
 	markActivity()
@@ -726,6 +741,7 @@ type Dashboard struct {
 	btLabel        *C.GtkWidget
 	btBtn          *C.GtkWidget
 	ultraSavingBtn *C.GtkWidget
+	quietHoursBtn  *C.GtkWidget
 
 	swipeStartX float64
 	swipeStartY float64
@@ -1388,6 +1404,18 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 	C.w_pack(usRow, d.ultraSavingBtn, 0, 0, 0)
 	C.w_pack(netVb, usRow, 0, 0, 0)
 
+	// Quiet Hours row — lets testing force per-minute daytime behavior
+	// without waiting for the 22:00-06:00 window.
+	qhRow := C.w_hbox(0, 6)
+	qhLabel := C.w_lbl()
+	C.w_markup(qhLabel, C.CString("<span font_desc='10' weight='bold'>Quiet Hours</span>"))
+	C.w_align(qhLabel, 0, 0.5)
+	C.w_pack(qhRow, qhLabel, 1, 1, 0)
+	d.quietHoursBtn = C.w_btn_named(C.CString("On"), toggleBtnName)
+	C.w_signal(d.quietHoursBtn, C.CString("clicked"), C.GCallback(unsafe.Pointer(C.onToggleQuietHours)))
+	C.w_pack(qhRow, d.quietHoursBtn, 0, 0, 0)
+	C.w_pack(netVb, qhRow, 0, 0, 0)
+
 	C.free(unsafe.Pointer(toggleBtnName))
 	C.w_add(netCard, netVb)
 	C.w_pack(vb, netCard, 0, 0, 0)
@@ -1448,7 +1476,7 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 }
 
 func (d *Dashboard) updateNetworkLabels() {
-	if d.wifiBtn == nil || d.usbBtn == nil || d.btBtn == nil || d.ultraSavingBtn == nil {
+	if d.wifiBtn == nil || d.usbBtn == nil || d.btBtn == nil || d.ultraSavingBtn == nil || d.quietHoursBtn == nil {
 		return
 	}
 	if d.ipLabel != nil {
@@ -1461,6 +1489,11 @@ func (d *Dashboard) updateNetworkLabels() {
 		setButtonMarkup(d.ultraSavingBtn, "On")
 	} else {
 		setButtonMarkup(d.ultraSavingBtn, "Off")
+	}
+	if quietHoursDisabled.Load() {
+		setButtonMarkup(d.quietHoursBtn, "Off")
+	} else {
+		setButtonMarkup(d.quietHoursBtn, "On")
 	}
 }
 

@@ -31,8 +31,21 @@ echo "Logging to $LOG_FILE"
 DPID=$!
 echo "PID: $DPID"
 
-# Keep device awake
+# Keep device awake — preventScreenSaver stops the screensaver but powerd may
+# still suspend on the physical power button press. The dashboard's own
+# powerbutton.go intercepts the gpio-keys input event (KEY_POWER) and jumps
+# to the rest screen (ViewHome) before powerd can act.
 lipc-set-prop -i com.lab126.powerd wakeUp 1 2>/dev/null || true
 lipc-set-prop -i com.lab126.powerd preventScreenSaver 1 2>/dev/null || true
+
+# Stop the touchscreen (cyttsp5) from being a suspend wakeup source — it was
+# firing spontaneous resumes mid-quiet-hour-sleep unrelated to the power
+# button or RTC alarm. Only gpio-keys (power button) and the RTC should wake
+# the device.
+for d in /sys/bus/i2c/devices/*/; do
+  if [ -f "${d}name" ] && grep -qi cyttsp "${d}name" 2>/dev/null; then
+    echo disabled >"${d}power/wakeup" 2>/dev/null || true
+  fi
+done
 
 wait $DPID

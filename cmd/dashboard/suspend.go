@@ -81,6 +81,11 @@ var buttonWakeDeadline atomic.Int64
 //   - During daytime: wakes every 2 minutes instead of every 1
 var ultraSavingMode atomic.Bool
 
+// quietHoursDisabled, when true, forces the normal per-minute daytime cycle
+// even during the 22:00-06:00 window. Settings-view toggle for testing the
+// regular wake path without waiting for or faking the clock.
+var quietHoursDisabled atomic.Bool
+
 // markActivity records a touch/click as "now", deferring suspend.
 func markActivity() {
 	lastActivityNano.Store(time.Now().UnixNano())
@@ -176,6 +181,9 @@ func wakeAlarmDelayForBoundary(now, boundary time.Time) time.Duration {
 // isQuietHour reports whether now falls inside the overnight quiet window
 // [quietHourStart, midnight) ∪ [midnight, quietHourEnd).
 func isQuietHour(now time.Time) bool {
+	if quietHoursDisabled.Load() {
+		return false
+	}
 	h := now.Hour()
 	return h >= quietHourStart || h < quietHourEnd
 }
@@ -294,9 +302,15 @@ func runSuspendCycle(d *Dashboard) {
 						if ultraSaving {
 							wifiOn()
 						}
-						log.Printf("suspend: quiet-hour early wake, restoring brightness and starting button-wake grace %v", buttonWakeGrace)
+						log.Printf("suspend: quiet-hour early wake, restoring brightness, jumping to ViewHome, and starting button-wake grace %v", buttonWakeGrace)
 						writeBrightness(savedBrightness)
 						d.UpdateBrightnessValue(savedBrightness)
+						// Jump to the rest screen on power button press
+						if ok := d.runOnUIWait(func() {
+							d.showView(ViewHome)
+						}, 500*time.Millisecond); !ok {
+							log.Printf("suspend: timed out jumping to ViewHome on quiet-hour early wake")
+						}
 						buttonWakeDeadline.Store(time.Now().Add(buttonWakeGrace).UnixNano())
 						continue
 					}
@@ -381,9 +395,15 @@ func runSuspendCycle(d *Dashboard) {
 				resumedAt := time.Now().Round(0)
 				if isEarlyWakeWall(resumedAt, scheduledWakeAt, earlyWakeMargin) {
 					earlyWake = true
-					log.Printf("suspend: early wake (resumed=%s scheduled_wake=%s margin=%v) - restoring brightness %d and starting button-wake grace %v", resumedAt.Format(time.RFC3339Nano), scheduledWakeAt.Format(time.RFC3339Nano), earlyWakeMargin, savedBrightness, buttonWakeGrace)
+					log.Printf("suspend: early wake (resumed=%s scheduled_wake=%s margin=%v) - restoring brightness %d, jumping to ViewHome, and starting button-wake grace %v", resumedAt.Format(time.RFC3339Nano), scheduledWakeAt.Format(time.RFC3339Nano), earlyWakeMargin, savedBrightness, buttonWakeGrace)
 					writeBrightness(savedBrightness)
 					d.UpdateBrightnessValue(savedBrightness)
+					// Jump to the rest screen on power button press
+					if ok := d.runOnUIWait(func() {
+						d.showView(ViewHome)
+					}, 500*time.Millisecond); !ok {
+						log.Printf("suspend: timed out jumping to ViewHome on early wake")
+					}
 					buttonWakeDeadline.Store(time.Now().Add(buttonWakeGrace).UnixNano())
 				} else {
 					log.Printf("suspend: rtc wake - keeping frontlight off")

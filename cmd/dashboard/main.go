@@ -86,6 +86,12 @@ func runDashboard(hwLandscape, suspendCycle bool) {
 		}()
 	}
 
+	// Power button monitor — intercepts the physical power button press
+	// before the Kindle OS can suspend, and jumps to the rest screen (ViewHome)
+	// instead. Runs regardless of suspend-cycle mode.
+	ctxPower := context.Background()
+	go WatchPowerButton(ctxPower, dash)
+
 	// Battery event-driven updates — decoupled from the clock loop.
 	// Uses epoll/POLLPRI to wait for kernel sysfs_notify events.
 	go WatchBatteryCapacity(context.Background(), dash.UpdateBattery)
