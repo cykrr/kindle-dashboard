@@ -91,8 +91,9 @@ func NewHassClient(cfg HassConfig, dash HassDashboard) *HassClient {
 // Run starts the periodic polling loop. Blocks until Stop() is called.
 func (h *HassClient) Run() {
 	// Initial fetch on startup so the UI populates quickly.
-	if err := h.fetchAll(); err != nil {
-		log.Printf("hass: initial fetch failed: %v", err)
+	h.setConnStatus("Fetching...")
+	if err := h.FetchAllWithRetry(3, 1*time.Second); err != nil {
+		log.Printf("hass: initial fetch totally failed: %v", err)
 		h.setConnStatus("Error")
 	} else {
 		h.setConnStatus("Connected")
@@ -104,8 +105,9 @@ func (h *HassClient) Run() {
 	for {
 		select {
 		case <-ticker.C:
-			if err := h.fetchAll(); err != nil {
-				log.Printf("hass: poll failed: %v", err)
+			h.setConnStatus("Fetching...")
+			if err := h.FetchAllWithRetry(3, 1*time.Second); err != nil {
+				log.Printf("hass: poll totally failed: %v", err)
 				h.setConnStatus("Error")
 				continue
 			}
@@ -114,6 +116,22 @@ func (h *HassClient) Run() {
 			return
 		}
 	}
+}
+
+// FetchAllWithRetry attempts fetchAll up to 'attempts' times with the given delay.
+func (h *HassClient) FetchAllWithRetry(attempts int, delay time.Duration) error {
+	var err error
+	for i := 0; i < attempts; i++ {
+		err = h.fetchAll()
+		if err == nil {
+			return nil
+		}
+		if i < attempts-1 {
+			log.Printf("hass: fetchAll failed (attempt %d/%d): %v", i+1, attempts, err)
+			time.Sleep(delay)
+		}
+	}
+	return err
 }
 
 // Stop signals the polling loop to exit.

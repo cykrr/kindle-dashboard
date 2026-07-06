@@ -437,9 +437,11 @@ func runSuspendCycle(d *Dashboard) {
 
 		if !skipNetwork {
 			if hassClient != nil {
-				err := hassClient.fetchAll()
+				hassClient.setConnStatus("Fetching...")
+				err := hassClient.FetchAllWithRetry(3, 1*time.Second)
 				if err != nil {
-					log.Printf("hass: post-resume fetch: %v", err)
+					log.Printf("hass: post-resume fetch totally failed: %v", err)
+					hassClient.setConnStatus("Error")
 				} else {
 					hassClient.setConnStatus("Connected")
 				}
