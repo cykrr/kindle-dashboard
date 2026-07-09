@@ -1,0 +1,50 @@
+{
+    "items": [
+        {
+            "name": "SSH Manager",
+            "priority": 5,
+            "items": [
+                {
+                    "name": "SSH Status",
+                    "priority": 1,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh status"
+                },
+                {
+                    "name": "Start SSH",
+                    "priority": 2,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh start"
+                },
+                {
+                    "name": "Stop SSH",
+                    "priority": 3,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh stop"
+                },
+                {
+                    "name": "Show IP",
+                    "priority": 4,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh ip"
+                },
+                {
+                    "name": "USB Net: Start",
+                    "priority": 10,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh usbstart"
+                },
+                {
+                    "name": "USB Net: Stop",
+                    "priority": 11,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh usbstop"
+                },
+                {
+                    "name": "USB Net: Status",
+                    "priority": 12,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh usbstatus"
+                },
+                {
+                    "name": "Toggle Logging",
+                    "priority": 100,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh togglog"
+                }
+            ]
+        }
+    ]
+}
