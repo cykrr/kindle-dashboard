@@ -51,6 +51,12 @@ const (
 	// refresh before we suspend again, avoiding half-painted/ghosted states.
 	einkRefreshSettle = 2 * time.Second
 
+	// forceSuspendSettle is the shorter settle used when the user explicitly
+	// presses power to sleep. They want the device down promptly, so we wait
+	// only long enough for the ViewHome redraw to physically flush (~500-800ms)
+	// instead of the conservative einkRefreshSettle margin.
+	forceSuspendSettle = 800 * time.Millisecond
+
 	// quietHourStart/End define the window where we skip per-minute wakes and
 	// instead sleep until quietWakeHour. During this window the screen is almost
 	// certainly not being viewed, so there is no benefit to waking WiFi every
@@ -88,6 +94,11 @@ var ultraSavingMode atomic.Bool
 var quietHoursDisabled atomic.Bool
 
 var forceSuspendCh = make(chan struct{}, 1)
+
+// forceSuspendPending is set by the power-button sleep press alongside
+// forceSuspendCh. It tells the suspend loop this cycle was user-requested, so
+// it should suspend promptly (short settle) and ignore any button-wake grace.
+var forceSuspendPending atomic.Bool
 
 // markActivity records a touch/click as "now", deferring suspend.
 func markActivity() {
@@ -266,21 +277,35 @@ func runSuspendCycle(ctx context.Context, d *Dashboard) {
 		}
 
 		view := d.CurrentView()
-		if dl := buttonWakeDeadline.Load(); dl != 0 {
+		if dl := buttonWakeDeadline.Load(); dl != 0 && !forceSuspendPending.Load() {
 			now := time.Now()
 			if view == ViewLauncher {
 				log.Printf("suspend: button-wake grace, currentView=launcher - kicking +%v", pcViewKick)
 				buttonWakeDeadline.Store(now.Add(pcViewKick).UnixNano())
-				time.Sleep(pcViewKick)
+				// Interruptible: a power-button sleep press ends the grace at
+				// once, and the next iteration takes the forced-suspend path.
+				sleepOrInterrupt(pcViewKick)
 				continue
 			}
 			if deadline := time.Unix(0, dl); now.Before(deadline) {
 				log.Printf("suspend: button-wake grace, %v remaining", time.Until(deadline))
-				time.Sleep(2 * time.Second)
+				sleepOrInterrupt(2 * time.Second)
 				continue
 			}
 			// Grace expired - clear it and suspend below regardless of view.
 			buttonWakeDeadline.Store(0)
+		}
+
+		// forced == true means the user pressed power to sleep. Honor it
+		// promptly: override any lingering button-wake grace and use the short
+		// e-ink settle instead of the conservative one.
+		forced := forceSuspendPending.Swap(false)
+		if forced {
+			buttonWakeDeadline.Store(0)
+		}
+		settle := einkRefreshSettle
+		if forced {
+			settle = forceSuspendSettle
 		}
 
 		if d.CurrentView() != ViewHome {
@@ -297,7 +322,13 @@ func runSuspendCycle(ctx context.Context, d *Dashboard) {
 			}
 			// Let the e-ink paint of ViewHome physically settle before dimming
 			// and suspending, so we never freeze a stale frame on the display.
-			if sleepOrInterrupt(einkRefreshSettle) {
+			if sleepOrInterrupt(settle) {
+				continue
+			}
+		} else if forced {
+			// Power-button sleep already jumped us to ViewHome and issued the
+			// paint; wait only for the e-ink flush, then suspend promptly.
+			if sleepOrInterrupt(settle) {
 				continue
 			}
 		}

@@ -379,7 +379,7 @@ static GtkWidget* w_logview() {
 	gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(tv), FALSE);
 	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(tv), GTK_WRAP_NONE);
 	gtk_text_view_set_left_margin(GTK_TEXT_VIEW(tv), 4);
-	PangoFontDescription *fd = pango_font_description_from_string("monospace 6");
+	PangoFontDescription *fd = pango_font_description_from_string("monospace 8");
 	gtk_widget_modify_font(tv, fd);
 	pango_font_description_free(fd);
 
@@ -512,6 +512,7 @@ const (
 	ViewHome
 	ViewLauncher
 	ViewInfo
+	ViewLog
 	viewCount
 )
 
@@ -835,6 +836,8 @@ func NewDashboard(options DashboardOptions) *Dashboard {
 	C.w_pack(vc, d.views[ViewLauncher], 1, 1, 0)
 	d.views[ViewInfo] = d.buildInfoView()
 	C.w_pack(vc, d.views[ViewInfo], 1, 1, 0)
+	d.views[ViewLog] = d.buildLogView()
+	C.w_pack(vc, d.views[ViewLog], 1, 1, 0)
 	C.w_pack(root, vc, 1, 1, 0)
 
 	// Indicators + Now Playing on same row
@@ -1113,7 +1116,7 @@ func (d *Dashboard) showView(idx ViewID) {
 		idx = ViewCalendar
 	}
 	if idx >= viewCount {
-		idx = ViewInfo
+		idx = viewCount - 1
 	}
 	// PC Macro: stop streaming when leaving the launcher view,
 	// start on demand when entering it.
@@ -1169,7 +1172,7 @@ func (d *Dashboard) refreshVisibleViewOnUI(now time.Time) {
 	if d.currentView == ViewHome {
 		d.updateClock(now)
 	}
-	if d.currentView == ViewInfo {
+	if d.currentView == ViewLog {
 		d.refreshLogView()
 	}
 	C.w_redraw(d.window)
@@ -1543,18 +1546,19 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 	spacer := C.w_lbl()
 	C.w_pack(vb, spacer, 1, 1, 0)
 
-	// Settings cards on the left, a live log panel on the right.
-	settings := C.w_scrolled(vb)
-	d.logView = C.w_logview()
-	row := C.w_hbox(0, 0)
-	C.w_pack(row, settings, 1, 1, 0)
-	C.w_pack(row, d.logView, 1, 1, 0)
-	d.refreshLogView()
-	return row
+	return C.w_scrolled(vb)
 }
 
-// refreshLogView repaints the settings-view log panel from the in-memory
-// ring buffer. Must run on the UI thread.
+// buildLogView is a full-screen tab showing the in-memory log ring: a
+// read-only, monospace, auto-scrolling text panel.
+func (d *Dashboard) buildLogView() *C.GtkWidget {
+	d.logView = C.w_logview()
+	d.refreshLogView()
+	return d.logView
+}
+
+// refreshLogView repaints the log tab from the in-memory ring buffer.
+// Must run on the UI thread.
 func (d *Dashboard) refreshLogView() {
 	if d.logView == nil || logs == nil {
 		return

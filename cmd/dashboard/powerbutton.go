@@ -137,6 +137,9 @@ func watchDevice(ctx context.Context, path string, d *Dashboard) {
 			// We were awake, so this is a sleep press.
 			log.Printf("powerbutton: device is awake, forcing suspend")
 			clearActivity()
+			// Mark this as a user-requested suspend so the loop sleeps promptly
+			// (short e-ink settle, ignore button-wake grace) once ViewHome paints.
+			forceSuspendPending.Store(true)
 			select {
 			case forceSuspendCh <- struct{}{}:
 			default:
