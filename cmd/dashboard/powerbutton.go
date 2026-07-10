@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"unsafe"
 )
 
@@ -109,9 +110,10 @@ func watchDevice(ctx context.Context, path string, d *Dashboard) {
 			d.showView(ViewHome)
 		})
 
-		// Restore brightness if dimmed for suspend.
+		// Check if we are asleep (screen dimmed) or awake.
 		saved := readBrightness()
 		if saved <= 1 {
+			// We were asleep or dimming, so this is a wake press.
 			maxB := readMaxBrightness()
 			if maxB > 0 {
 				restoreVal := maxB * 60 / 100 // 60%
@@ -119,18 +121,30 @@ func watchDevice(ctx context.Context, path string, d *Dashboard) {
 				writeBrightness(restoreVal)
 				d.UpdateBrightnessValue(restoreVal)
 			}
+			// Mark activity to give the suspend cycle a moment to pick up.
+			markActivity()
+		} else {
+			// We were awake, so this is a sleep press.
+			log.Printf("powerbutton: device is awake, forcing suspend")
+			clearActivity()
+			select {
+			case forceSuspendCh <- struct{}{}:
+			default:
+			}
 		}
-
-		// Mark activity to give the suspend cycle a moment to pick up.
-		markActivity()
 	}
 }
 
-// openBlocking opens an input device for blocking reads.
+// openBlocking opens an input device for blocking reads and grabs it exclusively.
 func openBlocking(path string) (*os.File, error) {
 	fd, err := os.OpenFile(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
+	}
+	// EVIOCGRAB = _IOW('E', 0x90, int) -> 0x40044590
+	_, _, e1 := syscall.Syscall(syscall.SYS_IOCTL, fd.Fd(), 0x40044590, 1)
+	if e1 != 0 {
+		log.Printf("powerbutton: warning: failed to grab %s exclusively (err=%d)", path, e1)
 	}
 	return fd, nil
 }

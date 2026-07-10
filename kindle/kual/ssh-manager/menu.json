@@ -7,41 +7,55 @@
                 {
                     "name": "SSH Status",
                     "priority": 1,
+                    "refresh": true,
                     "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh status"
                 },
                 {
                     "name": "Start SSH",
                     "priority": 2,
+                    "refresh": true,
                     "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh start"
                 },
                 {
                     "name": "Stop SSH",
                     "priority": 3,
+                    "refresh": true,
                     "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh stop"
                 },
                 {
                     "name": "Show IP",
                     "priority": 4,
+                    "refresh": true,
                     "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh ip"
+                },
+                {
+                    "name": "Show Dropbear Log",
+                    "priority": 5,
+                    "refresh": true,
+                    "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh showlog"
                 },
                 {
                     "name": "USB Net: Start",
                     "priority": 10,
+                    "refresh": true,
                     "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh usbstart"
                 },
                 {
                     "name": "USB Net: Stop",
                     "priority": 11,
+                    "refresh": true,
                     "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh usbstop"
                 },
                 {
                     "name": "USB Net: Status",
                     "priority": 12,
+                    "refresh": true,
                     "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh usbstatus"
                 },
                 {
                     "name": "Toggle Logging",
                     "priority": 100,
+                    "refresh": true,
                     "action": "/mnt/us/extensions/ssh-manager/ssh-manager.sh togglog"
                 }
             ]

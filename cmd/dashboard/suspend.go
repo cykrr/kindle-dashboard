@@ -86,13 +86,35 @@ var ultraSavingMode atomic.Bool
 // regular wake path without waiting for or faking the clock.
 var quietHoursDisabled atomic.Bool
 
+var forceSuspendCh = make(chan struct{}, 1)
+
 // markActivity records a touch/click as "now", deferring suspend.
 func markActivity() {
 	lastActivityNano.Store(time.Now().UnixNano())
 }
 
+// clearActivity resets the activity timer so the device can suspend immediately.
+func clearActivity() {
+	lastActivityNano.Store(0)
+}
+
 func timeSinceActivity() time.Duration {
 	return time.Since(time.Unix(0, lastActivityNano.Load()))
+}
+
+// sleepOrInterrupt sleeps for d. It returns true if it was interrupted by a force suspend.
+func sleepOrInterrupt(d time.Duration) bool {
+	if d <= 0 {
+		return false
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return false
+	case <-forceSuspendCh:
+		return true
+	}
 }
 
 // setWakeAlarm clears any pending RTC alarm and schedules a new one d from now.
@@ -121,17 +143,20 @@ func suspendToRAM() error {
 }
 
 // waitForNetwork blocks until outbound connectivity is available or maxWait
-// elapses, whichever comes first.
-func waitForNetwork(maxWait time.Duration) {
+// elapses, whichever comes first. It returns false if interrupted by force suspend.
+func waitForNetwork(maxWait time.Duration) bool {
 	deadline := time.Now().Add(maxWait)
 	for time.Now().Before(deadline) {
 		conn, err := net.DialTimeout("tcp", "1.1.1.1:443", 2*time.Second)
 		if err == nil {
 			conn.Close()
-			return
+			return true
 		}
-		time.Sleep(1 * time.Second)
+		if sleepOrInterrupt(1 * time.Second) {
+			return false
+		}
 	}
+	return true
 }
 
 func isEarlyWakeWall(resumedAt, scheduledWakeAt time.Time, margin time.Duration) bool {
@@ -225,7 +250,9 @@ func runSuspendCycle(d *Dashboard) {
 	for {
 		if idle := timeSinceActivity(); idle < activityGracePeriod {
 			log.Printf("suspend: deferring, idle=%v < %v", idle, activityGracePeriod)
-			time.Sleep(activityGracePeriod - idle)
+			if sleepOrInterrupt(activityGracePeriod - idle) {
+				continue
+			}
 			continue
 		}
 
@@ -285,7 +312,9 @@ func runSuspendCycle(d *Dashboard) {
 				if ultraSaving {
 					wifiOn()
 				}
-				time.Sleep(sleepDur)
+				if sleepOrInterrupt(sleepDur) {
+					continue
+				}
 			} else {
 				writeBrightness(0)
 				if err := suspendToRAM(); err != nil {
@@ -294,7 +323,9 @@ func runSuspendCycle(d *Dashboard) {
 					if ultraSaving {
 						wifiOn()
 					}
-					time.Sleep(sleepDur)
+					if sleepOrInterrupt(sleepDur) {
+						continue
+					}
 				} else {
 					resumedAt := time.Now().Round(0)
 					if isEarlyWakeWall(resumedAt, scheduledWakeAt, earlyWakeMargin) {
@@ -356,7 +387,9 @@ func runSuspendCycle(d *Dashboard) {
 				log.Printf("suspend: timed out waiting for quiet-hour final UI refresh")
 			}
 			log.Printf("suspend: settling display for %v before next sleep", einkRefreshSettle)
-			time.Sleep(einkRefreshSettle)
+			if sleepOrInterrupt(einkRefreshSettle) {
+				continue
+			}
 			suppressBrightnessSync.Store(false)
 			continue
 		}
@@ -376,14 +409,18 @@ func runSuspendCycle(d *Dashboard) {
 		log.Printf("suspend: suspending for %v until redraw=%s (wakealarm +%v, scheduled_wake=%s, lead=%v)", wait, redrawAt.Format(time.RFC3339Nano), wakeAlarmDelay, scheduledWakeAt.Format(time.RFC3339Nano), rtcWakeLead)
 		if err := setWakeAlarm(wakeAlarmDelay); err != nil {
 			log.Printf("suspend: %v — staying awake this cycle", err)
-			time.Sleep(wait)
+			if sleepOrInterrupt(wait) {
+				continue
+			}
 		} else {
 			log.Printf("suspend: dimming frontlight for power-save wake (saved_brightness=%d)", savedBrightness)
 			writeBrightness(0)
 			if err := suspendToRAM(); err != nil {
 				writeBrightness(savedBrightness)
 				log.Printf("suspend: %v — staying awake this cycle", err)
-				time.Sleep(wait)
+				if sleepOrInterrupt(wait) {
+					continue
+				}
 			} else {
 				resumedFromSuspend = true
 
@@ -421,24 +458,27 @@ func runSuspendCycle(d *Dashboard) {
 		if !earlyWake {
 			if untilRedraw := time.Until(redrawAt); untilRedraw > 0 {
 				log.Printf("suspend: waiting %v until redraw boundary %s", untilRedraw, redrawAt.Format(time.RFC3339Nano))
-				time.Sleep(untilRedraw)
+				if sleepOrInterrupt(untilRedraw) {
+					continue
+				}
 			}
 		}
 		if ok := d.RefreshVisibleViewAndWait(time.Now(), uiRefreshTimeout); !ok {
 			log.Printf("suspend: timed out waiting for initial UI refresh")
 		}
 
-		skipNetwork := false
+		// Background (RTC) wakes only redraw the clock — no HASS/PC polling.
+		// Network work happens only on manual (button) wakes.
+		skipNetwork := !earlyWake
 		if status := readBatteryStatus(); status == "Discharging" {
-			skipNetwork = !earlyWake // When unplugged, skip network unless manually woken
 			if skipNetwork {
-				// Turn off WiFi if we are just background waking for the clock, to save battery
+				// Unplugged background wake: also drop the WiFi radio to save battery.
 				if wifiState() == "On" {
 					log.Printf("suspend: unplugged and background wake - disabling WiFi")
 					wifiOff()
 				}
 			} else {
-				// Re-enable WiFi on manual wake if it was disabled
+				// Manual wake while unplugged: bring WiFi back for the poll.
 				if wifiState() == "Off" {
 					log.Printf("suspend: early wake - re-enabling WiFi")
 					wifiOn()
@@ -450,9 +490,13 @@ func runSuspendCycle(d *Dashboard) {
 			// Resume happens asynchronously (WiFi firmware reload, driver
 			// reinit) - give the device a moment to settle before network work,
 			// or it can hang.
-			time.Sleep(wakeGraceMin)
+			if sleepOrInterrupt(wakeGraceMin) {
+				continue
+			}
 			log.Printf("suspend: resumed, waiting up to %v for network", wakeGraceMax-wakeGraceMin)
-			waitForNetwork(wakeGraceMax - wakeGraceMin)
+			if !waitForNetwork(wakeGraceMax - wakeGraceMin) {
+				continue
+			}
 		}
 
 		if !skipNetwork {
@@ -499,7 +543,9 @@ func runSuspendCycle(d *Dashboard) {
 			log.Printf("suspend: timed out waiting for final UI refresh")
 		}
 		log.Printf("suspend: settling display for %v before next sleep", einkRefreshSettle)
-		time.Sleep(einkRefreshSettle)
+		if sleepOrInterrupt(einkRefreshSettle) {
+			continue
+		}
 
 		suppressBrightnessSync.Store(false)
 	}

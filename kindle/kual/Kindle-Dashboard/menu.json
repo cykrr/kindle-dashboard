@@ -1,0 +1,34 @@
+{
+    "items": [
+        {
+            "name": "Kindle Dashboard",
+            "priority": 4,
+            "items": [
+                {
+                    "name": "Start Dashboard",
+                    "priority": 1,
+                    "refresh": true,
+                    "action": "/mnt/us/extensions/Kindle-Dashboard/Kindle-Dashboard.sh start"
+                },
+                {
+                    "name": "Stop Dashboard",
+                    "priority": 2,
+                    "refresh": true,
+                    "action": "/mnt/us/extensions/Kindle-Dashboard/Kindle-Dashboard.sh stop"
+                },
+                {
+                    "name": "Restart Dashboard",
+                    "priority": 3,
+                    "refresh": true,
+                    "action": "/mnt/us/extensions/Kindle-Dashboard/Kindle-Dashboard.sh restart"
+                },
+                {
+                    "name": "Dashboard Status",
+                    "priority": 4,
+                    "refresh": true,
+                    "action": "/mnt/us/extensions/Kindle-Dashboard/Kindle-Dashboard.sh status"
+                }
+            ]
+        }
+    ]
+}

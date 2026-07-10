@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-cd "$(dirname "$0")"/../..
 source ./.env
 
 # Wait for Kindle to be reachable via SSH before deploying.
@@ -30,13 +29,17 @@ echo "=== Deploying native dashboard to Kindle ==="
 echo "Stopping any running dashboard..."
 ssh -p ${KINDLE_PORT} root@${KINDLE_IP} "killall -9 dashboard-native 2>/dev/null || true" || true
 
+# Ensure target dir exists (new path: /mnt/us/kindle-dashboard)
+ssh -p ${KINDLE_PORT} root@${KINDLE_IP} "mkdir -p ${DASHBOARD_DIR}" || true
+
 # Deploy binary
 echo "Copying dashboard-native..."
 scp -P${KINDLE_PORT} deploy/dashboard-native root@${KINDLE_IP}:${DASHBOARD_DIR}/
 
-# Deploy launch script
-echo "Copying launch.sh..."
+# Deploy launch/stop scripts
+echo "Copying scripts..."
 scp -P${KINDLE_PORT} scripts/kindle/launch.sh root@${KINDLE_IP}:${DASHBOARD_DIR}/
+scp -P${KINDLE_PORT} scripts/kindle/stop.sh root@${KINDLE_IP}:${DASHBOARD_DIR}/
 
 # Deploy KUAL extension
 echo "Copying KUAL extension..."
@@ -55,5 +58,5 @@ fi
 echo ""
 echo "=== Deploy complete ==="
 echo "Restarting dashboard via launch.sh (keeps device awake)..."
-ssh -p ${KINDLE_PORT} root@${KINDLE_IP} "nohup ${DASHBOARD_DIR}/launch.sh > /tmp/launch.log 2>&1 &"
+ssh -p ${KINDLE_PORT} root@${KINDLE_IP} "nohup ${DASHBOARD_DIR}/launch.sh start > /tmp/launch.log 2>&1 &"
 echo "Dashboard restarted."
