@@ -276,9 +276,21 @@ func runSuspendCycle(d *Dashboard) {
 
 		if d.CurrentView() != ViewHome {
 			log.Printf("suspend: jumping to ViewHome before sleep")
-			d.runOnUIWait(func() {
+			// Wait generously for the switch to complete: we are about to
+			// suspend, so blocking the loop here is free, and a 300ms best-effort
+			// wait loses the race against a slow e-ink view redraw (~500-800ms) —
+			// the loop would dim + suspend while showView is still queued, freezing
+			// the previous (e.g. settings) frame on screen until the next wake.
+			if ok := d.runOnUIWait(func() {
 				d.showView(ViewHome)
-			}, 300*time.Millisecond)
+			}, uiRefreshTimeout); !ok {
+				log.Printf("suspend: WARNING — ViewHome jump did not complete within %v", uiRefreshTimeout)
+			}
+			// Let the e-ink paint of ViewHome physically settle before dimming
+			// and suspending, so we never freeze a stale frame on the display.
+			if sleepOrInterrupt(einkRefreshSettle) {
+				continue
+			}
 		}
 
 		now := time.Now()
