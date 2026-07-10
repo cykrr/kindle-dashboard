@@ -57,12 +57,15 @@ func wifiOn() error {
 	return nil
 }
 
-// wifiOff disables WiFi: stop wifid, kill wpa_supplicant, bring interface down.
+// wifiOff disables WiFi by bringing the interface down only. It deliberately
+// does NOT stop wifid: tearing wifid down forces a full brcmfmac driver
+// unregister + SDIO re-enumeration on the next wifiOn, measured at ~17s to
+// reconnect. Leaving wifid running lets a plain `ip link up` reassociate in
+// ~1s. The WiFi chip is powered down by PM during suspend-to-RAM regardless,
+// so keeping wifid alive costs no meaningful battery.
 func wifiOff() error {
 	log.Printf("network: wifi off")
 	cmds := [][]string{
-		{"initctl", "stop", "wifid"},
-		{"killall", "wpa_supplicant"},
 		{"ip", "link", "set", "wlan0", "down"},
 	}
 	var errs []string
