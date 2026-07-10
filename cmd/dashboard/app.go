@@ -370,6 +370,39 @@ static GtkWidget* w_scrolled(GtkWidget *c) {
 	return sw;
 }
 
+// w_logview builds a read-only, monospace, natively-scrolling text panel.
+// The scrolled window is returned; its GtkTextView child is stashed as object
+// data so w_logview_set can reach it.
+static GtkWidget* w_logview() {
+	GtkWidget *tv = gtk_text_view_new();
+	gtk_text_view_set_editable(GTK_TEXT_VIEW(tv), FALSE);
+	gtk_text_view_set_cursor_visible(GTK_TEXT_VIEW(tv), FALSE);
+	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(tv), GTK_WRAP_NONE);
+	gtk_text_view_set_left_margin(GTK_TEXT_VIEW(tv), 4);
+	PangoFontDescription *fd = pango_font_description_from_string("monospace 6");
+	gtk_widget_modify_font(tv, fd);
+	pango_font_description_free(fd);
+
+	GtkWidget *sw = gtk_scrolled_window_new(NULL, NULL);
+	gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw), GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+	gtk_container_add(GTK_CONTAINER(sw), tv);
+	g_object_set_data(G_OBJECT(sw), "tv", tv);
+	return sw;
+}
+
+// w_logview_set replaces the panel text and scrolls to the newest line.
+static void w_logview_set(GtkWidget *sw, const char *text) {
+	GtkWidget *tv = GTK_WIDGET(g_object_get_data(G_OBJECT(sw), "tv"));
+	if (!tv) return;
+	GtkTextBuffer *buf = gtk_text_view_get_buffer(GTK_TEXT_VIEW(tv));
+	gtk_text_buffer_set_text(buf, text, -1);
+	GtkTextIter end;
+	gtk_text_buffer_get_end_iter(buf, &end);
+	GtkTextMark *mark = gtk_text_buffer_create_mark(buf, NULL, &end, FALSE);
+	gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(tv), mark, 0.0, TRUE, 0.0, 1.0);
+	gtk_text_buffer_delete_mark(buf, mark);
+}
+
 static gboolean w_is_swipe_target(GdkEventButton *event) {
 	GtkWidget *target = gtk_get_event_widget((GdkEvent*)event);
 	if (!target) return TRUE;
@@ -771,6 +804,7 @@ type Dashboard struct {
 	btBtn          *C.GtkWidget
 	ultraSavingBtn *C.GtkWidget
 	quietHoursBtn  *C.GtkWidget
+	logView        *C.GtkWidget
 
 	swipeStartX float64
 	swipeStartY float64
@@ -1134,6 +1168,9 @@ func (d *Dashboard) RefreshVisibleViewAndWait(now time.Time, timeout time.Durati
 func (d *Dashboard) refreshVisibleViewOnUI(now time.Time) {
 	if d.currentView == ViewHome {
 		d.updateClock(now)
+	}
+	if d.currentView == ViewInfo {
+		d.refreshLogView()
 	}
 	C.w_redraw(d.window)
 }
@@ -1506,7 +1543,25 @@ func (d *Dashboard) buildInfoView() *C.GtkWidget {
 	spacer := C.w_lbl()
 	C.w_pack(vb, spacer, 1, 1, 0)
 
-	return C.w_scrolled(vb)
+	// Settings cards on the left, a live log panel on the right.
+	settings := C.w_scrolled(vb)
+	d.logView = C.w_logview()
+	row := C.w_hbox(0, 0)
+	C.w_pack(row, settings, 1, 1, 0)
+	C.w_pack(row, d.logView, 1, 1, 0)
+	d.refreshLogView()
+	return row
+}
+
+// refreshLogView repaints the settings-view log panel from the in-memory
+// ring buffer. Must run on the UI thread.
+func (d *Dashboard) refreshLogView() {
+	if d.logView == nil || logs == nil {
+		return
+	}
+	cs := C.CString(logs.snapshot())
+	C.w_logview_set(d.logView, cs)
+	C.free(unsafe.Pointer(cs))
 }
 
 func (d *Dashboard) updateNetworkLabels() {

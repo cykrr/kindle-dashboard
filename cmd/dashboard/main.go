@@ -16,6 +16,10 @@ func main() {
 	suspendCycle := flag.Bool("suspend-cycle", false, "Suspend to RAM each minute, waking via RTC alarm (experimental power saving)")
 	debug := flag.Bool("debug", false, "Enable verbose dashboard debug logging")
 	flag.Parse()
+	// Own the log file in-process with a size cap + one backup so it can't
+	// grow without bound on tmpfs, and keep the last lines in memory for the
+	// settings-view log panel.
+	initLogStore("/tmp/dashboard-native.log", logMaxBytes)
 	setDebugLogging(*debug)
 
 	// Restore the Kindle's launcher UI on exit, however we exit.

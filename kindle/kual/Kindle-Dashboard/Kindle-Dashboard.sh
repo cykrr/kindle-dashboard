@@ -9,7 +9,11 @@
 #   - Shows status on the eInk screen via eips
 
 DASHBOARD_DIR="/mnt/us/kindle-dashboard"
+# The dashboard owns LOG_FILE in-process (size-capped, rotated). The shell only
+# captures stdout/stderr — panics and any pre-logger output — into a small boot
+# log that is truncated on every start so it can never grow unbounded.
 LOG_FILE="/tmp/dashboard-native.log"
+BOOT_LOG="/tmp/dashboard-boot.log"
 
 screen_msg() {
     eips -c 2>/dev/null
@@ -56,7 +60,7 @@ dashboard_start() {
     # lingering pid.
     (
         exec setsid "$DASHBOARD_DIR/dashboard-native" -hw-landscape -suspend-cycle \
-            >> "$LOG_FILE" 2>&1
+            > "$BOOT_LOG" 2>&1
     ) &
     DPID=$!
 
