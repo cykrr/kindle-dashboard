@@ -68,6 +68,16 @@ func watchDevice(ctx context.Context, path string, d *Dashboard) {
 	}
 	defer fd.Close()
 
+	// The read below blocks indefinitely, so a ctx cancel alone can't unblock
+	// it — and while parked it still holds the exclusive EVIOCGRAB. Close the
+	// fd on cancel: that releases the grab AND makes Read return an error so
+	// this goroutine exits (instead of leaking across an in-app restart, where
+	// a second exclusive grabber would then fight this one for the button).
+	go func() {
+		<-ctx.Done()
+		fd.Close()
+	}()
+
 	log.Printf("powerbutton: watching %s", path)
 
 	// 16-byte buffer = one input_event on 32-bit ARM

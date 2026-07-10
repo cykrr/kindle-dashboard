@@ -66,18 +66,30 @@ func runDashboard(hwLandscape, suspendCycle bool) {
 		dash.SetPCConnectionStatus("Not configured")
 	}
 
+	// Cancelled when this dashboard instance tears down (exit or in-app
+	// restart) so every long-lived goroutine below stops instead of leaking
+	// into the next run. Without this, a Restart would stack a second power
+	// button watcher (which grabs input exclusively) on top of the old one.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	if cfgErr == nil {
 		hassClient = NewHassClient(cfg, dash)
 		go hassClient.Run()
+		defer hassClient.Stop()
 	} else {
 		log.Printf("hass disabled: %v", cfgErr)
 		dash.SetConnectionStatus("Config Missing")
 	}
 
+	if pcEnabled {
+		defer pcMacroClient.StopStreaming()
+	}
+
 	if suspendCycle {
 		// Suspend-to-RAM cycle: handles its own clock/poll refresh on each
 		// RTC wake, replacing the plain clock goroutine below.
-		go runSuspendCycle(dash)
+		go runSuspendCycle(ctx, dash)
 	} else {
 		// Clock goroutine — sleeps precisely until the next minute boundary,
 		// waking the CPU only when the UI needs to reflect a new minute.
@@ -87,8 +99,13 @@ func runDashboard(hwLandscape, suspendCycle bool) {
 				next := time.Date(now.Year(), now.Month(), now.Day(),
 					now.Hour(), now.Minute()+1, 0, 0, now.Location())
 				timer := time.NewTimer(time.Until(next))
-				<-timer.C
-				dash.UpdateClock(time.Now())
+				select {
+				case <-timer.C:
+					dash.UpdateClock(time.Now())
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				}
 			}
 		}()
 	}
@@ -96,12 +113,11 @@ func runDashboard(hwLandscape, suspendCycle bool) {
 	// Power button monitor — intercepts the physical power button press
 	// before the Kindle OS can suspend, and jumps to the rest screen (ViewHome)
 	// instead. Runs regardless of suspend-cycle mode.
-	ctxPower := context.Background()
-	go WatchPowerButton(ctxPower, dash)
+	go WatchPowerButton(ctx, dash)
 
 	// Battery event-driven updates — decoupled from the clock loop.
 	// Uses epoll/POLLPRI to wait for kernel sysfs_notify events.
-	go WatchBatteryCapacity(context.Background(), dash.UpdateBattery)
+	go WatchBatteryCapacity(ctx, dash.UpdateBattery)
 
 	// Configure static IP for wlan0 (safe — runtime only, lost on reboot)
 	if err := setWifiStaticIP(); err != nil {

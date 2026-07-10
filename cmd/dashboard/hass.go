@@ -82,9 +82,10 @@ type LightData struct {
 
 func NewHassClient(cfg HassConfig, dash HassDashboard) *HassClient {
 	return &HassClient{
-		cfg:  cfg,
-		dash: dash,
-		http: &http.Client{Timeout: 10 * time.Second},
+		cfg:    cfg,
+		dash:   dash,
+		http:   &http.Client{Timeout: 10 * time.Second},
+		stopCh: make(chan struct{}),
 	}
 }
 

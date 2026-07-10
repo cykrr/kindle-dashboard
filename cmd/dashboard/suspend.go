@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
@@ -243,11 +244,19 @@ func nextQuietWakeTime(now time.Time) time.Time {
 //
 //  3. HA poll on morning wake: the single quiet-hour exit wake still fetches
 //     fresh HA (calendar, lights) state so the user sees correct data at 06:00.
-func runSuspendCycle(d *Dashboard) {
+func runSuspendCycle(ctx context.Context, d *Dashboard) {
 	savedBrightness := readBrightness()
 	var pcFailCount int // consecutive background PC poll failures
 
 	for {
+		// Stop on teardown (exit or in-app restart). Otherwise a Restart would
+		// stack a second suspend loop on top of this one, and the two would
+		// fight over the RTC alarm and force-suspend channel.
+		if ctx.Err() != nil {
+			log.Printf("suspend: context cancelled — stopping suspend cycle")
+			return
+		}
+
 		if idle := timeSinceActivity(); idle < activityGracePeriod {
 			log.Printf("suspend: deferring, idle=%v < %v", idle, activityGracePeriod)
 			if sleepOrInterrupt(activityGracePeriod - idle) {
